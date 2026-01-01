@@ -39,6 +39,16 @@ export interface GalleryItem {
   timestamp: number;
 }
 
+export interface Message {
+    id: string;
+    senderId: string;
+    receiverId: string;
+    content: string;
+    type: 'text' | 'image';
+    timestamp: number;
+    read: boolean;
+}
+
 export type ThemeColor = 'blue' | 'purple' | 'green' | 'orange' | 'rose';
 export type FontFamily = 'sans' | 'serif' | 'mono';
 export type CardStyle = 'glass' | 'solid' | 'minimal';
@@ -84,6 +94,7 @@ export interface AppData {
     notes: Note[];
     moods: MoodEntry[];
     gallery: GalleryItem[];
+    friends: string[]; // List of User IDs
 }
 
 export type AppView = 'onboarding' | 'dashboard' | 'session';

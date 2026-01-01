@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Task, Reminder, Note, MoodEntry, UserProfile, LiveStatus, ThemeColor, ThemePreferences, GalleryItem, MediaContent } from '../types';
+import { Task, Reminder, Note, MoodEntry, UserProfile, LiveStatus, ThemeColor, ThemePreferences, GalleryItem, MediaContent, Message } from '../types';
 import Visualizer from './Visualizer';
 import { useGeminiLive } from '../hooks/useGeminiLive';
 import { BarChart, Bar, XAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { SpotifyService } from '../services/spotifyService';
+import { StorageService } from '../services/storage';
 import SnowEffect from './SnowEffect';
 
 interface DashboardProps {
@@ -94,13 +95,6 @@ const getThemeStyles = (theme: ThemePreferences) => {
     };
 };
 
-// Stock backgrounds
-const BACKGROUNDS = [
-    { name: "Dark Abstract", url: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=1920&q=80" },
-    { name: "Neon City", url: "https://images.unsplash.com/photo-1514306191717-452245255e0c?auto=format&fit=crop&w=1920&q=80" },
-    { name: "Serene Nature", url: "https://images.unsplash.com/photo-1472214103451-9374bd1c798e?auto=format&fit=crop&w=1920&q=80" }
-];
-
 const Dashboard: React.FC<DashboardProps> = ({
     user,
     tasks, setTasks,
@@ -112,9 +106,115 @@ const Dashboard: React.FC<DashboardProps> = ({
     onLogout
 }) => {
     const themeStyles = getThemeStyles(user.theme);
-    const [activeTab, setActiveTab] = useState<'overview' | 'tasks' | 'notes' | 'mood' | 'gallery' | 'settings'>('overview');
+    const [activeTab, setActiveTab] = useState<'overview' | 'tasks' | 'notes' | 'social' | 'mood' | 'gallery' | 'settings'>('overview');
     const [spotifyDeviceId, setSpotifyDeviceId] = useState<string | null>(null);
     const [showSettings, setShowSettings] = useState(false);
+
+    // --- Social State ---
+    const [friends, setFriends] = useState<UserProfile[]>([]);
+    const [friendIds, setFriendIds] = useState<string[]>([]);
+    const [activeChatId, setActiveChatId] = useState<string | null>(null);
+    const [messages, setMessages] = useState<Message[]>([]);
+    const [messageInput, setMessageInput] = useState('');
+    const [addFriendInput, setAddFriendInput] = useState('');
+    const [addFriendError, setAddFriendError] = useState('');
+    const messagesEndRef = useRef<HTMLDivElement>(null);
+    const fileInputRef = useRef<HTMLInputElement>(null);
+
+    // Initial Load of Friends
+    useEffect(() => {
+        const storedData = StorageService.loadUserData(user.id);
+        const storedFriendIds = storedData.friends || [];
+        setFriendIds(storedFriendIds);
+
+        // Hydrate friend profiles
+        const profiles = storedFriendIds
+            .map(id => StorageService.getUserPublicProfile(id))
+            .filter(p => p !== null) as UserProfile[];
+        setFriends(profiles);
+    }, [user.id]);
+
+    // Poll for messages (simulation of realtime)
+    useEffect(() => {
+        if (!activeChatId) return;
+        
+        const poll = setInterval(() => {
+            const msgs = StorageService.getConversation(user.id, activeChatId);
+            // Only update if length changed to prevent jitter, though in React 18 this is fine
+            setMessages(prev => msgs.length !== prev.length ? msgs : prev);
+        }, 1000);
+
+        return () => clearInterval(poll);
+    }, [activeChatId, user.id]);
+
+    useEffect(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }, [messages]);
+
+    const handleAddFriend = () => {
+        if (!addFriendInput.trim()) return;
+        if (addFriendInput.toLowerCase() === user.username.toLowerCase()) {
+            setAddFriendError("You can't add yourself!");
+            return;
+        }
+
+        const foundUser = StorageService.findUserByUsername(addFriendInput.trim());
+        if (foundUser) {
+            if (friendIds.includes(foundUser.id)) {
+                setAddFriendError("Already friends!");
+                return;
+            }
+            const newIds = [...friendIds, foundUser.id];
+            setFriendIds(newIds);
+            setFriends(prev => [...prev, foundUser]);
+            StorageService.saveData(user.id, 'friends', newIds);
+            setAddFriendInput('');
+            setAddFriendError('');
+            alert(`Added ${foundUser.username}!`);
+        } else {
+            setAddFriendError("User not found.");
+        }
+    };
+
+    const handleSendMessage = () => {
+        if ((!messageInput.trim()) || !activeChatId) return;
+        
+        const newMessage: Message = {
+            id: Date.now().toString(),
+            senderId: user.id,
+            receiverId: activeChatId,
+            content: messageInput,
+            type: 'text',
+            timestamp: Date.now(),
+            read: false
+        };
+
+        StorageService.sendMessage(newMessage);
+        setMessages(prev => [...prev, newMessage]);
+        setMessageInput('');
+    };
+
+    const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (e.target.files && e.target.files[0] && activeChatId) {
+            const file = e.target.files[0];
+            const reader = new FileReader();
+            reader.onloadend = () => {
+                const base64String = reader.result as string;
+                const newMessage: Message = {
+                    id: Date.now().toString(),
+                    senderId: user.id,
+                    receiverId: activeChatId,
+                    content: base64String, // Store image data in content
+                    type: 'image',
+                    timestamp: Date.now(),
+                    read: false
+                };
+                StorageService.sendMessage(newMessage);
+                setMessages(prev => [...prev, newMessage]);
+            };
+            reader.readAsDataURL(file);
+        }
+    };
 
     // Handlers for Gemini Tools
     const handleTaskAction = async (action: string, title?: string, searchTerm?: string) => {
@@ -308,7 +408,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                         {/* Visualizer Card */}
                         <div className={`relative ${themeStyles.card} rounded-3xl p-8 flex flex-col items-center justify-center min-h-[400px] overflow-hidden group`}>
                              <div className="absolute top-4 right-4 z-20">
-                                {status === 'disconnected' || status === 'error' ? (
+                                {status === 'disconnected' || status === 'error' || status === 'connecting' ? (
                                     <button 
                                         onClick={connect}
                                         disabled={status === 'connecting'}
@@ -365,6 +465,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                         <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-hide">
                             {[
                                 { id: 'overview', label: 'Overview' },
+                                { id: 'social', label: 'Social' },
                                 { id: 'tasks', label: 'Tasks' },
                                 { id: 'notes', label: 'Notes' },
                                 { id: 'mood', label: 'Mood' },
@@ -439,6 +540,131 @@ const Dashboard: React.FC<DashboardProps> = ({
                                         </div>
                                     </div>
                                 </>
+                            )}
+
+                            {/* SOCIAL TAB */}
+                            {activeTab === 'social' && (
+                                <div className="h-[600px] flex flex-col md:flex-row gap-4">
+                                    {/* Friends List & Add */}
+                                    <div className={`${themeStyles.card} rounded-2xl p-4 md:w-1/3 flex flex-col`}>
+                                        <h3 className="font-semibold text-white mb-4">Friends</h3>
+                                        
+                                        {/* Add Friend Input */}
+                                        <div className="mb-4">
+                                            <div className="flex gap-2">
+                                                <input 
+                                                    type="text"
+                                                    value={addFriendInput}
+                                                    onChange={(e) => setAddFriendInput(e.target.value)}
+                                                    placeholder="Username"
+                                                    className="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-white/30 focus:outline-none focus:border-blue-500"
+                                                />
+                                                <button 
+                                                    onClick={handleAddFriend}
+                                                    className="bg-blue-600 hover:bg-blue-500 text-white p-2 rounded-lg transition-colors"
+                                                >
+                                                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+                                                </button>
+                                            </div>
+                                            {addFriendError && <p className="text-red-400 text-xs mt-1">{addFriendError}</p>}
+                                        </div>
+
+                                        {/* List */}
+                                        <div className="flex-1 overflow-y-auto space-y-2">
+                                            {friends.map(friend => (
+                                                <div 
+                                                    key={friend.id} 
+                                                    onClick={() => { setActiveChatId(friend.id); setMessages(StorageService.getConversation(user.id, friend.id)); }}
+                                                    className={`p-3 rounded-xl flex items-center gap-3 cursor-pointer transition-colors ${activeChatId === friend.id ? 'bg-white/10 border border-white/10' : 'hover:bg-white/5 border border-transparent'}`}
+                                                >
+                                                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center text-xs font-bold">
+                                                        {friend.username.slice(0,2).toUpperCase()}
+                                                    </div>
+                                                    <div className="overflow-hidden">
+                                                        <p className="text-sm font-medium text-white truncate">{friend.name}</p>
+                                                        <p className="text-xs text-white/50 truncate">@{friend.username}</p>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                            {friends.length === 0 && <p className="text-center text-white/30 text-sm py-4">No friends yet.</p>}
+                                        </div>
+                                    </div>
+
+                                    {/* Chat Area */}
+                                    <div className={`${themeStyles.card} rounded-2xl flex-1 flex flex-col overflow-hidden`}>
+                                        {activeChatId ? (
+                                            <>
+                                                {/* Chat Header */}
+                                                <div className="p-4 border-b border-white/10 flex items-center gap-3 bg-black/20">
+                                                    <div className="w-8 h-8 rounded-full bg-zinc-700 flex items-center justify-center text-xs">
+                                                        {friends.find(f => f.id === activeChatId)?.username.slice(0,2).toUpperCase()}
+                                                    </div>
+                                                    <span className="font-medium text-white">
+                                                        {friends.find(f => f.id === activeChatId)?.username}
+                                                    </span>
+                                                </div>
+
+                                                {/* Messages */}
+                                                <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                                                    {messages.map(msg => {
+                                                        const isMe = msg.senderId === user.id;
+                                                        return (
+                                                            <div key={msg.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
+                                                                <div className={`max-w-[75%] rounded-2xl px-4 py-2 text-sm ${isMe ? 'bg-blue-600 text-white rounded-br-none' : 'bg-zinc-700 text-white rounded-bl-none'}`}>
+                                                                    {msg.type === 'text' && <p>{msg.content}</p>}
+                                                                    {msg.type === 'image' && (
+                                                                        <img src={msg.content} alt="Shared" className="rounded-lg max-h-48 object-cover my-1" />
+                                                                    )}
+                                                                    <p className="text-[10px] opacity-50 mt-1 text-right">
+                                                                        {new Date(msg.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                                                                    </p>
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    })}
+                                                    <div ref={messagesEndRef} />
+                                                </div>
+
+                                                {/* Input Area */}
+                                                <div className="p-3 border-t border-white/10 bg-black/20 flex gap-2 items-center">
+                                                    <button 
+                                                        onClick={() => fileInputRef.current?.click()}
+                                                        className="p-2 text-white/50 hover:text-white transition-colors"
+                                                    >
+                                                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                                                    </button>
+                                                    <input 
+                                                        type="file" 
+                                                        ref={fileInputRef} 
+                                                        onChange={handleImageUpload} 
+                                                        accept="image/*" 
+                                                        className="hidden" 
+                                                    />
+                                                    <input
+                                                        type="text"
+                                                        value={messageInput}
+                                                        onChange={(e) => setMessageInput(e.target.value)}
+                                                        onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
+                                                        placeholder="Type a message..."
+                                                        className="flex-1 bg-white/5 border border-white/10 rounded-full px-4 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
+                                                    />
+                                                    <button 
+                                                        onClick={handleSendMessage}
+                                                        disabled={!messageInput.trim()}
+                                                        className="p-2 bg-blue-600 rounded-full text-white disabled:opacity-50 hover:bg-blue-500"
+                                                    >
+                                                        <svg className="w-4 h-4 transform rotate-90" fill="currentColor" viewBox="0 0 20 20"><path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z" /></svg>
+                                                    </button>
+                                                </div>
+                                            </>
+                                        ) : (
+                                            <div className="flex-1 flex flex-col items-center justify-center text-white/30">
+                                                <svg className="w-16 h-16 mb-4 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M17 8h2a2 2 0 012 2v6a2 2 0 01-2 2h-2v4l-4-4H9a1.994 1.994 0 01-1.414-.586m0 0L11 14h4a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2v4l.586-.586z" /></svg>
+                                                <p>Select a friend to start chatting</p>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
                             )}
 
                             {/* TASKS TAB */}

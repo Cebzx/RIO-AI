@@ -1,7 +1,8 @@
-import { UserProfile, Task, Reminder, Note, MoodEntry, GalleryItem, AppData } from '../types';
+import { UserProfile, Task, Reminder, Note, MoodEntry, GalleryItem, AppData, Message } from '../types';
 
 const DB_KEY = 'rio_secure_db_v1';
 const CURRENT_USER_KEY = 'rio_active_session';
+const MESSAGES_KEY = 'rio_messages_bus_v1';
 
 // Simple obfuscation/encryption simulation for client-side demo
 // In a real app, this would be a proper backend or Web Crypto API implementation
@@ -35,6 +36,26 @@ export const StorageService = {
         return decrypt(raw) || [];
     },
 
+    getUserPublicProfile: (userId: string): UserProfile | null => {
+        const users = StorageService.getUsers();
+        const user = users.find(u => u.id === userId);
+        if (user) {
+            const { password, data, ...profile } = user;
+            return profile;
+        }
+        return null;
+    },
+
+    findUserByUsername: (username: string): UserProfile | null => {
+        const users = StorageService.getUsers();
+        const user = users.find(u => u.username.toLowerCase() === username.toLowerCase());
+        if (user) {
+            const { password, data, ...profile } = user;
+            return profile;
+        }
+        return null;
+    },
+
     saveUser: (user: UserProfile & { password?: string }, data?: AppData) => {
         const users = StorageService.getUsers();
         const index = users.findIndex(u => u.id === user.id);
@@ -45,12 +66,12 @@ export const StorageService = {
         // If updating an existing user, preserve password and data if not provided
         if (index !== -1) {
             if (!userData.password) userData.password = users[index].password;
-            userData.data = data || users[index].data || { tasks: [], reminders: [], notes: [], moods: [], gallery: [] };
+            userData.data = data || users[index].data || { tasks: [], reminders: [], notes: [], moods: [], gallery: [], friends: [] };
             users[index] = userData;
         } else {
             // New User
             if (!userData.password) throw new Error("Password required for new user");
-            userData.data = data || { tasks: [], reminders: [], notes: [], moods: [], gallery: [] };
+            userData.data = data || { tasks: [], reminders: [], notes: [], moods: [], gallery: [], friends: [] };
             users.push(userData);
         }
 
@@ -72,6 +93,8 @@ export const StorageService = {
         if (found) {
             const { password: _, data, ...profile } = found;
             localStorage.setItem(CURRENT_USER_KEY, encrypt(profile));
+            // Ensure friends array exists for legacy users
+            if (!data.friends) data.friends = [];
             return { user: profile, data: data };
         }
         return null;
@@ -93,9 +116,10 @@ export const StorageService = {
         const users = StorageService.getUsers();
         const user = users.find(u => u.id === userId);
         if (user && user.data) {
+            if (!user.data.friends) user.data.friends = [];
             return user.data;
         }
-        return { tasks: [], reminders: [], notes: [], moods: [], gallery: [] };
+        return { tasks: [], reminders: [], notes: [], moods: [], gallery: [], friends: [] };
     },
 
     // Save specific data slice
@@ -104,12 +128,34 @@ export const StorageService = {
         const index = users.findIndex(u => u.id === userId);
         if (index !== -1) {
             if (!users[index].data) {
-                users[index].data = { tasks: [], reminders: [], notes: [], moods: [], gallery: [] };
+                users[index].data = { tasks: [], reminders: [], notes: [], moods: [], gallery: [], friends: [] };
             }
             // @ts-ignore
             users[index].data[type] = items;
             localStorage.setItem(DB_KEY, encrypt(users));
         }
+    },
+
+    // --- Messaging System (Global Bus) ---
+    // Stored separately so messages persist across user switches easily
+
+    getAllMessages: (): Message[] => {
+        const raw = localStorage.getItem(MESSAGES_KEY);
+        return raw ? decrypt(raw) || [] : [];
+    },
+
+    getConversation: (user1Id: string, user2Id: string): Message[] => {
+        const all = StorageService.getAllMessages();
+        return all.filter(m => 
+            (m.senderId === user1Id && m.receiverId === user2Id) || 
+            (m.senderId === user2Id && m.receiverId === user1Id)
+        ).sort((a, b) => a.timestamp - b.timestamp);
+    },
+
+    sendMessage: (msg: Message) => {
+        const all = StorageService.getAllMessages();
+        all.push(msg);
+        localStorage.setItem(MESSAGES_KEY, encrypt(all));
     },
     
     // Migration helper for older localstorage format
@@ -124,10 +170,10 @@ export const StorageService = {
                 notes: JSON.parse(localStorage.getItem('vibe_notes') || '[]'),
                 moods: JSON.parse(localStorage.getItem('vibe_moods') || '[]'),
                 gallery: JSON.parse(localStorage.getItem('vibe_gallery') || '[]'),
+                friends: []
             };
             
             // Create a default password for migrated user since we didn't have one before
-            // We'll prompt them or just use 'rio123' as a fallback for the demo structure
             StorageService.saveUser({ ...user, password: 'password' }, data);
             
             // Clean up legacy
