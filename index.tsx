@@ -1,6 +1,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
+import './index.css';
 
 // Polyfill process for browser environment to avoid "process is not defined" errors
 // This ensures process.env.API_KEY access doesn't crash the app, even if empty.
