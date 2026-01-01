@@ -239,7 +239,7 @@ const Dashboard: React.FC<DashboardProps> = ({
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         
         // Determine supported mime type (Crucial for iOS compatibility)
-        let options = {};
+        let options: any = {};
         let mimeType = '';
         if (MediaRecorder.isTypeSupported('audio/mp4')) {
              mimeType = 'audio/mp4';
@@ -255,7 +255,8 @@ const Dashboard: React.FC<DashboardProps> = ({
 
         recorder.ondataavailable = (e: BlobEvent) => {
             if (e.data.size > 0) {
-                audioChunksRef.current.push(e.data);
+                // Explicitly cast to Blob to avoid TS errors
+                audioChunksRef.current.push(e.data as unknown as Blob);
             }
         };
 
