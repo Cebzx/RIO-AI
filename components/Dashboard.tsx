@@ -110,6 +110,12 @@ const Dashboard: React.FC<DashboardProps> = ({
     const [spotifyDeviceId, setSpotifyDeviceId] = useState<string | null>(null);
     const [showSettings, setShowSettings] = useState(false);
 
+    // --- Camera State ---
+    const [showCamera, setShowCamera] = useState(false);
+    const videoRef = useRef<HTMLVideoElement>(null);
+    const canvasRef = useRef<HTMLCanvasElement>(null);
+    const streamRef = useRef<MediaStream | null>(null);
+
     // --- Social State ---
     const [friends, setFriends] = useState<UserProfile[]>([]);
     const [friendIds, setFriendIds] = useState<string[]>([]);
@@ -232,6 +238,48 @@ const Dashboard: React.FC<DashboardProps> = ({
         }
     };
 
+    // Camera Handlers
+    const startCamera = async () => {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+            if (videoRef.current) {
+                videoRef.current.srcObject = stream;
+            }
+            streamRef.current = stream;
+            setShowCamera(true);
+        } catch (err) {
+            console.error("Error accessing camera:", err);
+            alert("Could not access camera.");
+        }
+    };
+
+    const stopCamera = () => {
+        if (streamRef.current) {
+            streamRef.current.getTracks().forEach(track => track.stop());
+            streamRef.current = null;
+        }
+        setShowCamera(false);
+    };
+
+    const captureAndSend = () => {
+        if (videoRef.current && canvasRef.current) {
+            const video = videoRef.current;
+            const canvas = canvasRef.current;
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            const ctx = canvas.getContext('2d');
+            if (ctx) {
+                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+                const base64Data = dataUrl.split(',')[1];
+                sendImage(base64Data);
+                stopCamera();
+                // Optionally give feedback
+                alert("Image sent to Rio! Ask your question.");
+            }
+        }
+    };
+
     // Handlers for Gemini Tools
     const handleTaskAction = async (action: string, title?: string, searchTerm?: string) => {
         if (action === 'create' && title) {
@@ -333,7 +381,8 @@ const Dashboard: React.FC<DashboardProps> = ({
         outputVolume, 
         setOutputVolume,
         sources,
-        mediaContent
+        mediaContent,
+        sendImage
     } = useGeminiLive({
         userProfile: user,
         tasks,
@@ -423,39 +472,73 @@ const Dashboard: React.FC<DashboardProps> = ({
                     <div className="lg:col-span-5 flex flex-col gap-6">
                         {/* Visualizer Card */}
                         <div className={`relative ${themeStyles.card} rounded-3xl p-8 flex flex-col items-center justify-center min-h-[400px] overflow-hidden group`}>
-                             <div className="absolute top-4 right-4 z-20">
-                                {status === 'disconnected' || status === 'error' || status === 'connecting' ? (
-                                    <button 
-                                        onClick={connect}
-                                        disabled={status === 'connecting'}
-                                        className={`px-6 py-2 rounded-full font-medium text-sm transition-all shadow-lg ${status === 'connecting' ? 'bg-zinc-700 text-zinc-400' : 'bg-white text-black hover:bg-zinc-200 hover:scale-105'}`}
-                                    >
-                                        {status === 'connecting' ? 'Connecting...' : 'Start Session'}
-                                    </button>
-                                ) : (
-                                    <button 
-                                        onClick={disconnect}
-                                        className="px-6 py-2 rounded-full font-medium text-sm bg-red-500/10 text-red-400 hover:bg-red-500/20 border border-red-500/20 transition-all"
-                                    >
-                                        End Session
-                                    </button>
-                                )}
-                             </div>
-                             
-                             <Visualizer 
-                                volume={volume}
-                                isActive={status === 'connected'}
-                                isSpeaking={isSpeaking}
-                             />
+                             {showCamera ? (
+                                 <div className="absolute inset-0 bg-black flex flex-col items-center justify-center z-30">
+                                     <video ref={videoRef} autoPlay playsInline muted className="absolute inset-0 w-full h-full object-cover" />
+                                     <canvas ref={canvasRef} className="hidden" />
+                                     
+                                     {/* Camera Controls Overlay */}
+                                     <div className="absolute bottom-6 flex gap-4 z-40">
+                                        <button 
+                                            onClick={stopCamera}
+                                            className="px-6 py-3 rounded-full bg-red-500/20 text-red-400 backdrop-blur-md border border-red-500/40 hover:bg-red-500/40 transition-colors font-medium"
+                                        >
+                                            Cancel
+                                        </button>
+                                        <button 
+                                            onClick={captureAndSend}
+                                            className="w-16 h-16 rounded-full bg-white border-4 border-zinc-300 flex items-center justify-center shadow-lg hover:scale-105 transition-transform"
+                                        >
+                                            <div className="w-12 h-12 rounded-full bg-white border-2 border-black"></div>
+                                        </button>
+                                     </div>
+                                 </div>
+                             ) : (
+                                <>
+                                    <div className="absolute top-4 right-4 z-20 flex gap-2">
+                                        {status === 'connected' && (
+                                            <button 
+                                                onClick={startCamera}
+                                                className="p-2 rounded-full bg-white/10 text-white hover:bg-white/20 transition-all border border-white/10"
+                                                title="Show Rio something"
+                                            >
+                                                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                                            </button>
+                                        )}
+                                        {status === 'disconnected' || status === 'error' || status === 'connecting' ? (
+                                            <button 
+                                                onClick={connect}
+                                                disabled={status === 'connecting'}
+                                                className={`px-6 py-2 rounded-full font-medium text-sm transition-all shadow-lg ${status === 'connecting' ? 'bg-zinc-700 text-zinc-400' : 'bg-white text-black hover:bg-zinc-200 hover:scale-105'}`}
+                                            >
+                                                {status === 'connecting' ? 'Connecting...' : 'Start Session'}
+                                            </button>
+                                        ) : (
+                                            <button 
+                                                onClick={disconnect}
+                                                className="px-6 py-2 rounded-full font-medium text-sm bg-red-500/10 text-red-400 hover:bg-red-500/20 border border-red-500/20 transition-all"
+                                            >
+                                                End Session
+                                            </button>
+                                        )}
+                                    </div>
+                                    
+                                    <Visualizer 
+                                        volume={volume}
+                                        isActive={status === 'connected'}
+                                        isSpeaking={isSpeaking}
+                                    />
 
-                             {/* Media Display Overlay */}
-                             {mediaContent && (
-                                <div className="absolute inset-x-4 bottom-4 p-4 bg-black/60 backdrop-blur-md rounded-2xl border border-white/10 animate-fade-in-up">
-                                    <h4 className="text-xs uppercase tracking-wider text-white/50 mb-1">{mediaContent.type}</h4>
-                                    {mediaContent.type === 'text' && <p className="text-white text-sm">{mediaContent.content}</p>}
-                                    {mediaContent.type === 'image' && <img src={mediaContent.url} alt="Generated" className="w-full h-32 object-cover rounded-lg" />}
-                                    {mediaContent.title && <p className="text-white font-medium text-sm mt-1">{mediaContent.title}</p>}
-                                </div>
+                                    {/* Media Display Overlay */}
+                                    {mediaContent && (
+                                        <div className="absolute inset-x-4 bottom-4 p-4 bg-black/60 backdrop-blur-md rounded-2xl border border-white/10 animate-fade-in-up">
+                                            <h4 className="text-xs uppercase tracking-wider text-white/50 mb-1">{mediaContent.type}</h4>
+                                            {mediaContent.type === 'text' && <p className="text-white text-sm">{mediaContent.content}</p>}
+                                            {mediaContent.type === 'image' && <img src={mediaContent.url} alt="Generated" className="w-full h-32 object-cover rounded-lg" />}
+                                            {mediaContent.title && <p className="text-white font-medium text-sm mt-1">{mediaContent.title}</p>}
+                                        </div>
+                                    )}
+                                </>
                              )}
                         </div>
                         

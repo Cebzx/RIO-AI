@@ -95,6 +95,19 @@ export const useGeminiLive = ({
     setSources([]);
   }, []);
 
+  const sendImage = useCallback((base64Data: string, mimeType: string = 'image/jpeg') => {
+    if (sessionRef.current) {
+        sessionRef.current.then((session: any) => {
+            session.sendRealtimeInput({
+                media: {
+                    mimeType,
+                    data: base64Data
+                }
+            });
+        });
+    }
+  }, []);
+
   const connect = useCallback(async () => {
     try {
       setStatus('connecting');
@@ -153,6 +166,7 @@ export const useGeminiLive = ({
         2. VISUALS & WEB SEARCH:
            - To GENERATE an image, use 'updateDisplay' with type='image' and pollinations.ai URL.
            - To SEARCH videos/images, use Google Search tool. If you find a video/image URL, use 'updateDisplay'.
+           - The user can send you IMAGES via their camera. Analyze them in detail if received.
         
         3. PRODUCTIVITY:
            - manageTasks, manageReminders, manageNotes.
@@ -313,5 +327,5 @@ export const useGeminiLive = ({
     }
   }, [onTaskAction, onReminderAction, onNoteAction, onMoodAction, outputVolume, onSpotifyAction]);
 
-  return { connect, disconnect, status, isSpeaking, volume, outputVolume, setOutputVolume, sources, mediaContent };
+  return { connect, disconnect, status, isSpeaking, volume, outputVolume, setOutputVolume, sources, mediaContent, sendImage };
 };
