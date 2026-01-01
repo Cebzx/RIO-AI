@@ -56,6 +56,36 @@ export const StorageService = {
         return null;
     },
 
+    findUserByEmail: (email: string): UserProfile | null => {
+        const users = StorageService.getUsers();
+        const user = users.find(u => u.email.toLowerCase() === email.toLowerCase());
+        if (user) {
+            const { password, data, ...profile } = user;
+            return profile;
+        }
+        return null;
+    },
+
+    findUserByInviteCode: (code: string): UserProfile | null => {
+        const users = StorageService.getUsers();
+        // Case insensitive check for invite code
+        const user = users.find(u => u.inviteCode && u.inviteCode.toUpperCase() === code.toUpperCase());
+        if (user) {
+            const { password, data, ...profile } = user;
+            return profile;
+        }
+        return null;
+    },
+
+    updatePassword: (userId: string, newPassword: string) => {
+        const users = StorageService.getUsers();
+        const index = users.findIndex(u => u.id === userId);
+        if (index !== -1) {
+            users[index].password = newPassword;
+            localStorage.setItem(DB_KEY, encrypt(users));
+        }
+    },
+
     saveUser: (user: UserProfile & { password?: string }, data?: AppData) => {
         const users = StorageService.getUsers();
         const index = users.findIndex(u => u.id === user.id);
@@ -63,9 +93,20 @@ export const StorageService = {
         // Prepare payload
         const userData: any = { ...user };
         
+        // Ensure invite code exists
+        if (!userData.inviteCode) {
+            userData.inviteCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+        }
+        
         // If updating an existing user, preserve password and data if not provided
         if (index !== -1) {
             if (!userData.password) userData.password = users[index].password;
+            
+            // Preserve existing invite code if current object is missing it (rare edge case with partial updates)
+            if (!userData.inviteCode && users[index].inviteCode) {
+                userData.inviteCode = users[index].inviteCode;
+            }
+
             userData.data = data || users[index].data || { tasks: [], reminders: [], notes: [], moods: [], gallery: [], friends: [] };
             users[index] = userData;
         } else {
@@ -80,7 +121,7 @@ export const StorageService = {
         // If this is the currently logged in user, update session
         const currentSession = StorageService.getSession();
         if (currentSession && currentSession.id === user.id) {
-            localStorage.setItem(CURRENT_USER_KEY, encrypt(user)); // Don't store full data in session key
+            localStorage.setItem(CURRENT_USER_KEY, encrypt(userData)); // Update session with new fields (like inviteCode)
         }
     },
 

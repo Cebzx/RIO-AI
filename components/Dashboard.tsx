@@ -106,7 +106,7 @@ const Dashboard: React.FC<DashboardProps> = ({
     onLogout
 }) => {
     const themeStyles = getThemeStyles(user.theme);
-    const [activeTab, setActiveTab] = useState<'overview' | 'tasks' | 'notes' | 'social' | 'mood' | 'gallery' | 'settings'>('overview');
+    const [activeTab, setActiveTab] = useState<'overview' | 'tasks' | 'notes' | 'social' | 'mood' | 'gallery' | 'profile' | 'settings'>('overview');
     const [spotifyDeviceId, setSpotifyDeviceId] = useState<string | null>(null);
     const [showSettings, setShowSettings] = useState(false);
 
@@ -120,6 +120,14 @@ const Dashboard: React.FC<DashboardProps> = ({
     const [addFriendError, setAddFriendError] = useState('');
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
+
+    // Generate Invite Code if missing for existing users
+    useEffect(() => {
+        if (!user.inviteCode) {
+            const newCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+            onUpdateUser({ inviteCode: newCode });
+        }
+    }, [user.inviteCode, onUpdateUser]);
 
     // Initial Load of Friends
     useEffect(() => {
@@ -152,13 +160,21 @@ const Dashboard: React.FC<DashboardProps> = ({
     }, [messages]);
 
     const handleAddFriend = () => {
-        if (!addFriendInput.trim()) return;
-        if (addFriendInput.toLowerCase() === user.username.toLowerCase()) {
+        const input = addFriendInput.trim();
+        if (!input) return;
+        
+        // Prevent adding self by username or own invite code
+        if (input.toLowerCase() === user.username.toLowerCase() || input.toUpperCase() === user.inviteCode?.toUpperCase()) {
             setAddFriendError("You can't add yourself!");
             return;
         }
 
-        const foundUser = StorageService.findUserByUsername(addFriendInput.trim());
+        // Search by Username OR Invite Code
+        let foundUser = StorageService.findUserByUsername(input);
+        if (!foundUser) {
+            foundUser = StorageService.findUserByInviteCode(input);
+        }
+
         if (foundUser) {
             if (friendIds.includes(foundUser.id)) {
                 setAddFriendError("Already friends!");
@@ -166,13 +182,13 @@ const Dashboard: React.FC<DashboardProps> = ({
             }
             const newIds = [...friendIds, foundUser.id];
             setFriendIds(newIds);
-            setFriends(prev => [...prev, foundUser]);
+            setFriends(prev => [...prev, foundUser!]);
             StorageService.saveData(user.id, 'friends', newIds);
             setAddFriendInput('');
             setAddFriendError('');
             alert(`Added ${foundUser.username}!`);
         } else {
-            setAddFriendError("User not found.");
+            setAddFriendError("User not found (Check Username or Code)");
         }
     };
 
@@ -469,7 +485,8 @@ const Dashboard: React.FC<DashboardProps> = ({
                                 { id: 'tasks', label: 'Tasks' },
                                 { id: 'notes', label: 'Notes' },
                                 { id: 'mood', label: 'Mood' },
-                                { id: 'gallery', label: 'Gallery' }
+                                { id: 'gallery', label: 'Gallery' },
+                                { id: 'profile', label: 'Profile' }
                             ].map(tab => (
                                 <button
                                     key={tab.id}
@@ -556,7 +573,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                                                     type="text"
                                                     value={addFriendInput}
                                                     onChange={(e) => setAddFriendInput(e.target.value)}
-                                                    placeholder="Username"
+                                                    placeholder="Username or Invite Code"
                                                     className="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-white/30 focus:outline-none focus:border-blue-500"
                                                 />
                                                 <button 
@@ -663,6 +680,80 @@ const Dashboard: React.FC<DashboardProps> = ({
                                                 <p>Select a friend to start chatting</p>
                                             </div>
                                         )}
+                                    </div>
+                                </div>
+                            )}
+
+                             {/* PROFILE TAB */}
+                            {activeTab === 'profile' && (
+                                <div className="max-w-4xl mx-auto space-y-6">
+                                    {/* Header Card */}
+                                    <div className={`${themeStyles.card} rounded-3xl p-8 relative overflow-hidden`}>
+                                        <div className={`absolute top-0 left-0 w-full h-32 bg-gradient-to-r ${themeStyles.colors.gradient} opacity-20`}></div>
+                                        <div className="relative z-10 flex flex-col md:flex-row items-center gap-6 mt-8">
+                                            <div className={`w-24 h-24 rounded-full bg-gradient-to-br ${themeStyles.colors.gradient} flex items-center justify-center text-3xl font-bold shadow-2xl border-4 border-black/20`}>
+                                                {user.username.slice(0,2).toUpperCase()}
+                                            </div>
+                                            <div className="text-center md:text-left">
+                                                <h2 className="text-3xl font-bold text-white">{user.name}</h2>
+                                                <p className="text-white/50">@{user.username}</p>
+                                                <div className="flex items-center justify-center md:justify-start gap-4 mt-3">
+                                                     <span className="text-xs bg-white/10 px-3 py-1 rounded-full text-white/70">
+                                                         {user.isAdultMode ? 'Unfiltered Mode' : 'Safe Mode'}
+                                                     </span>
+                                                     <span className="text-xs bg-white/10 px-3 py-1 rounded-full text-white/70">
+                                                         Member since {new Date(parseInt(user.id)).getFullYear()}
+                                                     </span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                        {/* Invite Code Card */}
+                                        <div className={`${themeStyles.card} rounded-2xl p-6`}>
+                                            <h3 className="font-semibold text-white mb-2 flex items-center gap-2">
+                                                <svg className="w-5 h-5 text-yellow-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 110 4v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 110-4V7a2 2 0 00-2-2H5z" /></svg>
+                                                Invite Friends
+                                            </h3>
+                                            <p className="text-sm text-white/50 mb-4">Share this code with your friends so they can add you directly.</p>
+                                            
+                                            <div className="bg-black/30 border border-white/10 rounded-xl p-4 flex items-center justify-between group">
+                                                <code className="text-2xl font-mono tracking-widest text-blue-400 font-bold">
+                                                    {user.inviteCode || 'LOADING'}
+                                                </code>
+                                                <button 
+                                                    onClick={() => {
+                                                        if (user.inviteCode) {
+                                                            navigator.clipboard.writeText(user.inviteCode);
+                                                            alert('Code copied!');
+                                                        }
+                                                    }}
+                                                    className="p-2 hover:bg-white/10 rounded-lg text-white/50 hover:text-white transition-colors"
+                                                >
+                                                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        {/* Quick Stats */}
+                                        <div className={`${themeStyles.card} rounded-2xl p-6`}>
+                                            <h3 className="font-semibold text-white mb-4">Your Activity</h3>
+                                            <div className="space-y-4">
+                                                <div className="flex justify-between items-center pb-3 border-b border-white/5">
+                                                    <span className="text-sm text-white/60">Friends Added</span>
+                                                    <span className="text-lg font-bold text-white">{friends.length}</span>
+                                                </div>
+                                                <div className="flex justify-between items-center pb-3 border-b border-white/5">
+                                                    <span className="text-sm text-white/60">Tasks Completed</span>
+                                                    <span className="text-lg font-bold text-white">{tasks.filter(t => t.completed).length}</span>
+                                                </div>
+                                                <div className="flex justify-between items-center">
+                                                    <span className="text-sm text-white/60">Mood Logs</span>
+                                                    <span className="text-lg font-bold text-white">{moodHistory.length}</span>
+                                                </div>
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
                             )}

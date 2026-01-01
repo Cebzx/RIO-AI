@@ -79,6 +79,7 @@ export interface UserProfile {
   name: string;
   avatar?: string;
   bio?: string;
+  inviteCode?: string; // Unique code for adding friends
   isAdultMode: boolean; // Toggle for "no filter"
   isHandsFree: boolean; // Toggle for "Hey Rio" wake word
   setupComplete: boolean;
