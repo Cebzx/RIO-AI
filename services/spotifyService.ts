@@ -1,7 +1,10 @@
-// Replace with your actual Client ID from Spotify Developer Dashboard
-const CLIENT_ID = 'a6723b7b514d48a3915174094a619092'; 
-// Since this is a client-side demo, we use the current window location as redirect
+
+// Default to a placeholder if none provided, but UI will encourage user to provide their own
+// This particular ID is just a fallback and likely won't work for random users unless whitelisted
+const DEFAULT_CLIENT_ID = 'a6723b7b514d48a3915174094a619092'; 
 const REDIRECT_URI = window.location.origin + '/'; 
+
+// Scopes required for playback and reading data
 const SCOPES = [
   'streaming',
   'user-read-email',
@@ -13,9 +16,10 @@ const SCOPES = [
 ];
 
 export const SpotifyService = {
-  getAuthUrl: () => {
+  getAuthUrl: (customClientId?: string) => {
+    const clientId = customClientId || DEFAULT_CLIENT_ID;
     const params = new URLSearchParams({
-      client_id: CLIENT_ID,
+      client_id: clientId,
       response_type: 'token',
       redirect_uri: REDIRECT_URI,
       scope: SCOPES.join(' '),
@@ -38,7 +42,8 @@ export const SpotifyService = {
     return null;
   },
 
-  searchAndPlay: async (query: string, token: string, type: 'track' | 'album' | 'playlist' = 'track') => {
+  // Search and play, preferring the local browser device if available
+  searchAndPlay: async (query: string, token: string, deviceId?: string, type: 'track' | 'album' | 'playlist' = 'track') => {
     try {
       // 1. Search
       const searchRes = await fetch(`https://api.spotify.com/v1/search?q=${encodeURIComponent(query)}&type=${type}&limit=1`, {
@@ -67,23 +72,28 @@ export const SpotifyService = {
       if (!uri) return { success: false, message: 'Not found' };
 
       // 2. Play (PUT /me/player/play)
-      // Note: This requires an active Spotify device. If none are active, we might fallback to just returning the URI for the embed.
-      const playRes = await fetch(`https://api.spotify.com/v1/me/player/play`, {
+      const body: any = type === 'track' ? { uris: [uri] } : { context_uri: uri };
+      
+      // If we have a local device ID from the Web Playback SDK, target it specifically
+      const queryParams = deviceId ? `?device_id=${deviceId}` : '';
+
+      const playRes = await fetch(`https://api.spotify.com/v1/me/player/play${queryParams}`, {
         method: 'PUT',
         headers: { 
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify(type === 'track' ? { uris: [uri] } : { context_uri: uri })
+        body: JSON.stringify(body)
       });
 
       if (playRes.status === 204) {
         return { success: true, message: `Playing ${name}`, uri, name, image };
       } else if (playRes.status === 404) {
-         // No active device found. We return success so the UI can show the Embed player instead.
-         return { success: true, message: `Found ${name}. Queued on player.`, uri, name, image, deviceNotFound: true };
+         return { success: true, message: `Found ${name}. Attempted play, but no active device found.`, uri, name, image, deviceNotFound: true };
+      } else if (playRes.status === 403) {
+         return { success: false, message: 'Playback failed. Premium account required for API playback.' };
       } else {
-         return { success: false, message: 'Could not start playback. Ensure Spotify is open.' };
+         return { success: false, message: 'Could not start playback.' };
       }
 
     } catch (e) {
@@ -94,11 +104,15 @@ export const SpotifyService = {
 
   controlPlayback: async (action: 'pause' | 'play' | 'next' | 'previous', token: string) => {
     const endpoint = action === 'next' ? 'next' : action === 'previous' ? 'previous' : action;
-    await fetch(`https://api.spotify.com/v1/me/player/${endpoint}`, {
-      method: action === 'play' || action === 'pause' ? 'PUT' : 'POST',
-      headers: { 'Authorization': `Bearer ${token}` }
-    });
-    return `Playback ${action}ed`;
+    try {
+        await fetch(`https://api.spotify.com/v1/me/player/${endpoint}`, {
+        method: action === 'play' || action === 'pause' ? 'PUT' : 'POST',
+        headers: { 'Authorization': `Bearer ${token}` }
+        });
+        return `Playback ${action}ed`;
+    } catch (e) {
+        return "Failed to control playback.";
+    }
   },
 
   getTopTracks: async (token: string) => {

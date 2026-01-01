@@ -75,6 +75,7 @@ export interface UserProfile {
   theme: ThemePreferences;
   widgets: WidgetPreferences;
   spotify?: SpotifyAuth;
+  spotifyClientId?: string; // Custom Client ID
 }
 
 export interface AppData {

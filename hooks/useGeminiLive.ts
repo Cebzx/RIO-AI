@@ -10,11 +10,12 @@ interface UseGeminiLiveProps {
   tasks: Task[];
   reminders: Reminder[];
   notes: Note[];
+  spotifyDeviceId?: string | null; // Added: Active Spotify Device ID
   onTaskAction: (action: string, title?: string, searchTerm?: string) => Promise<string>;
   onReminderAction: (action: string, title?: string, searchTerm?: string) => Promise<string>;
   onNoteAction: (action: string, content?: string) => Promise<string>;
   onMoodAction: (score: number, notes?: string) => Promise<string>;
-  onSpotifyAction: (result: any) => void; // Callback to update UI with Spotify info
+  onSpotifyAction: (result: any) => void;
 }
 
 export const useGeminiLive = ({ 
@@ -22,6 +23,7 @@ export const useGeminiLive = ({
   tasks, 
   reminders, 
   notes, 
+  spotifyDeviceId,
   onTaskAction, 
   onReminderAction, 
   onNoteAction, 
@@ -46,15 +48,18 @@ export const useGeminiLive = ({
   const sessionRef = useRef<any>(null);
   const aiClientRef = useRef<GoogleGenAI | null>(null);
 
+  // Refs for data consistency in callbacks
   const tasksRef = useRef(tasks);
   const remindersRef = useRef(reminders);
   const notesRef = useRef(notes);
   const userProfileRef = useRef(userProfile);
+  const deviceIdRef = useRef(spotifyDeviceId);
   
   useEffect(() => { tasksRef.current = tasks; }, [tasks]);
   useEffect(() => { remindersRef.current = reminders; }, [reminders]);
   useEffect(() => { notesRef.current = notes; }, [notes]);
   useEffect(() => { userProfileRef.current = userProfile; }, [userProfile]);
+  useEffect(() => { deviceIdRef.current = spotifyDeviceId; }, [spotifyDeviceId]);
 
   useEffect(() => {
     if (outputGainRef.current) {
@@ -143,6 +148,7 @@ export const useGeminiLive = ({
            - If asked to play music, use 'spotifyControl' with action='search'.
            - If asked for top tracks, use 'spotifyControl' with action='get_top_tracks'.
            - Fallback to 'updateDisplay' (type='music') if Spotify fails or isn't linked.
+           - NOTE: You can now play music directly on the user's device if Spotify is linked!
         
         2. VISUALS & WEB SEARCH:
            - To GENERATE an image, use 'updateDisplay' with type='image' and pollinations.ai URL.
@@ -181,9 +187,7 @@ export const useGeminiLive = ({
             const processor = inputContextRef.current.createScriptProcessor(4096, 1, 1);
             processorRef.current = processor;
             processor.onaudioprocess = (e) => {
-              // User is speaking, clear old sources
               setSources([]); 
-
               const inputData = e.inputBuffer.getChannelData(0);
               let sum = 0;
               for(let i = 0; i < inputData.length; i++) sum += inputData[i] * inputData[i];
@@ -197,7 +201,6 @@ export const useGeminiLive = ({
             processor.connect(inputContextRef.current.destination);
           },
           onmessage: async (message: LiveServerMessage) => {
-            // Check for grounding metadata (Search Results)
             if (message.serverContent?.groundingMetadata?.groundingChunks) {
               const chunks = message.serverContent.groundingMetadata.groundingChunks;
               const newSources = chunks
@@ -259,15 +262,16 @@ export const useGeminiLive = ({
                   } else if (fc.name === 'spotifyControl') {
                     const token = userProfileRef.current.spotify?.accessToken;
                     if (!token) {
-                        result = "Spotify not connected. Please ask user to connect in settings.";
+                        result = "Spotify not connected. Ask user to check Settings.";
                     } else {
                         if (args.action === 'search') {
-                            const res = await SpotifyService.searchAndPlay(args.query, token, args.type || 'track');
+                            // PASS DEVICE ID HERE
+                            const res = await SpotifyService.searchAndPlay(args.query, token, deviceIdRef.current || undefined, args.type || 'track');
                             if (res.success) {
                                 result = res.message;
-                                onSpotifyAction(res); // Notify UI to show player/meta
+                                onSpotifyAction(res); 
                             } else {
-                                result = "Could not find that track on Spotify.";
+                                result = "Track not found or playback error.";
                             }
                         } else if (args.action === 'get_top_tracks') {
                             const tracks = await SpotifyService.getTopTracks(token);
@@ -275,7 +279,7 @@ export const useGeminiLive = ({
                                 const trackNames = tracks.map((t: any) => `${t.name} by ${t.artists.map((a:any) => a.name).join(', ')}`).join('\n');
                                 result = `Here are your top tracks:\n${trackNames}`;
                             } else {
-                                result = "No top tracks found or couldn't fetch them.";
+                                result = "No top tracks found.";
                             }
                         } else {
                             result = await SpotifyService.controlPlayback(args.action, token);
