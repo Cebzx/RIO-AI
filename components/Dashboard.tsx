@@ -114,7 +114,7 @@ const Dashboard: React.FC<DashboardProps> = ({
   // Audio Recording State
   const [isRecording, setIsRecording] = useState(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const audioChunksRef = useRef<Blob[]>([]);
+  const audioChunksRef = useRef<any[]>([]);
 
   // Local state for profile editing
   const [editBio, setEditBio] = useState(user.bio || '');
@@ -558,7 +558,7 @@ const Dashboard: React.FC<DashboardProps> = ({
               </div>
               
               <div className="h-48 w-full mb-6">
-                <ResponsiveContainer width="100%" height="100%">
+                <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                     <BarChart data={moodHistory.slice(-7).map(m => ({ day: new Date(m.timestamp).toLocaleDateString('en-US', {weekday:'short'}), score: m.score }))}>
                         <XAxis dataKey="day" stroke="#52525b" fontSize={11} tickLine={false} axisLine={false} dy={10} />
                         <Tooltip contentStyle={{ backgroundColor: '#18181b', border: '1px solid #27272a', borderRadius: '8px', fontSize: '12px', color: '#fff' }} cursor={{fill: 'rgba(255,255,255,0.05)', radius: 4}}/>
