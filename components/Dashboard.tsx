@@ -119,6 +119,7 @@ const Dashboard: React.FC<DashboardProps> = ({
     // --- Social State ---
     const [friends, setFriends] = useState<UserProfile[]>([]);
     const [friendIds, setFriendIds] = useState<string[]>([]);
+    const [suggestedFriends, setSuggestedFriends] = useState<UserProfile[]>([]);
     const [activeChatId, setActiveChatId] = useState<string | null>(null);
     const [messages, setMessages] = useState<Message[]>([]);
     const [messageInput, setMessageInput] = useState('');
@@ -135,7 +136,7 @@ const Dashboard: React.FC<DashboardProps> = ({
         }
     }, [user.inviteCode, onUpdateUser]);
 
-    // Initial Load of Friends
+    // Initial Load of Friends and Suggestions
     useEffect(() => {
         const storedData = StorageService.loadUserData(user.id);
         const storedFriendIds = storedData.friends || [];
@@ -146,7 +147,11 @@ const Dashboard: React.FC<DashboardProps> = ({
             .map(id => StorageService.getUserPublicProfile(id))
             .filter(p => p !== null) as UserProfile[];
         setFriends(profiles);
-    }, [user.id]);
+        
+        // Load Suggestions
+        setSuggestedFriends(StorageService.getSuggestedFriends(user.id, storedFriendIds));
+
+    }, [user.id, activeTab]); // Reload suggestions when tab changes
 
     // Poll for messages (simulation of realtime)
     useEffect(() => {
@@ -164,6 +169,26 @@ const Dashboard: React.FC<DashboardProps> = ({
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [messages]);
+
+    const executeAddFriend = (targetUser: UserProfile) => {
+        if (friendIds.includes(targetUser.id)) {
+            setAddFriendError("Already friends!");
+            return;
+        }
+        const newIds = [...friendIds, targetUser.id];
+        setFriendIds(newIds);
+        setFriends(prev => [...prev, targetUser]);
+        
+        // Update DB
+        StorageService.saveData(user.id, 'friends', newIds);
+        
+        // Update suggestions
+        setSuggestedFriends(prev => prev.filter(u => u.id !== targetUser.id));
+
+        setAddFriendInput('');
+        setAddFriendError('');
+        alert(`Added ${targetUser.username} to your friends!`);
+    };
 
     const handleAddFriend = () => {
         const input = addFriendInput.trim();
@@ -187,17 +212,7 @@ const Dashboard: React.FC<DashboardProps> = ({
         }
 
         if (foundUser) {
-            if (friendIds.includes(foundUser.id)) {
-                setAddFriendError("Already friends!");
-                return;
-            }
-            const newIds = [...friendIds, foundUser.id];
-            setFriendIds(newIds);
-            setFriends(prev => [...prev, foundUser!]);
-            StorageService.saveData(user.id, 'friends', newIds);
-            setAddFriendInput('');
-            setAddFriendError('');
-            alert(`Added ${foundUser.username} to your friends!`);
+            executeAddFriend(foundUser);
         } else {
             setAddFriendError("User not found (Check Username, Code, or Email)");
         }
@@ -674,6 +689,24 @@ const Dashboard: React.FC<DashboardProps> = ({
                                             {addFriendError && <p className="text-red-400 text-xs mt-1">{addFriendError}</p>}
                                         </div>
 
+                                        {/* Suggested Friends */}
+                                        {suggestedFriends.length > 0 && (
+                                            <div className="mb-4 bg-white/5 rounded-xl p-3 border border-white/5">
+                                                <h4 className="text-xs text-white/50 uppercase font-semibold mb-2">People You May Know</h4>
+                                                <div className="space-y-2">
+                                                    {suggestedFriends.map(s => (
+                                                        <div key={s.id} className="flex items-center justify-between">
+                                                            <div className="flex items-center gap-2">
+                                                                <div className="w-6 h-6 rounded-full bg-zinc-700 flex items-center justify-center text-[10px]">{s.username.slice(0,2).toUpperCase()}</div>
+                                                                <span className="text-xs text-white/80">{s.username}</span>
+                                                            </div>
+                                                            <button onClick={() => executeAddFriend(s)} className="text-xs text-blue-400 hover:text-white px-2 py-1 bg-blue-500/10 rounded">Add</button>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+
                                         {/* List */}
                                         <div className="flex-1 overflow-y-auto space-y-2">
                                             {friends.map(friend => (
@@ -691,7 +724,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                                                     </div>
                                                 </div>
                                             ))}
-                                            {friends.length === 0 && <p className="text-center text-white/30 text-sm py-4">No friends yet. Add RioBot to test!</p>}
+                                            {friends.length === 0 && <p className="text-center text-white/30 text-sm py-4">No friends yet.</p>}
                                         </div>
                                     </div>
 

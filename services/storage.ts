@@ -83,9 +83,21 @@ export const StorageService = {
         return null;
     },
 
+    // Return list of users excluding the current user and already added friends
+    getSuggestedFriends: (currentUserId: string, friendIds: string[]): UserProfile[] => {
+        const users = StorageService.getUsers();
+        return users
+            .filter(u => u.id !== currentUserId && !friendIds.includes(u.id))
+            .map(u => {
+                const { password, data, ...profile } = u;
+                return profile;
+            })
+            .slice(0, 5); // Limit to 5 suggestions
+    },
+
     findUserByUsername: (username: string): UserProfile | null => {
         const users = StorageService.getUsers();
-        const user = users.find(u => u.username.toLowerCase() === username.toLowerCase());
+        const user = users.find(u => u.username && u.username.toLowerCase() === username.toLowerCase());
         if (user) {
             const { password, data, ...profile } = user;
             return profile;
@@ -95,7 +107,7 @@ export const StorageService = {
 
     findUserByEmail: (email: string): UserProfile | null => {
         const users = StorageService.getUsers();
-        const user = users.find(u => u.email.toLowerCase() === email.toLowerCase());
+        const user = users.find(u => u.email && u.email.toLowerCase() === email.toLowerCase());
         if (user) {
             const { password, data, ...profile } = user;
             return profile;
@@ -194,7 +206,13 @@ export const StorageService = {
         const users = StorageService.getUsers();
         const user = users.find(u => u.id === userId);
         if (user && user.data) {
+            // Robust initialization to prevent undefined errors
             if (!user.data.friends) user.data.friends = [];
+            if (!user.data.tasks) user.data.tasks = [];
+            if (!user.data.reminders) user.data.reminders = [];
+            if (!user.data.notes) user.data.notes = [];
+            if (!user.data.moods) user.data.moods = [];
+            if (!user.data.gallery) user.data.gallery = [];
             return user.data;
         }
         return { tasks: [], reminders: [], notes: [], moods: [], gallery: [], friends: [] };
