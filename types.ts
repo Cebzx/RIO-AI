@@ -89,6 +89,11 @@ export interface UserProfile {
   spotifyClientId?: string; // Custom Client ID
 }
 
+export interface FriendRequest {
+    senderId: string;
+    timestamp: number;
+}
+
 export interface AppData {
     tasks: Task[];
     reminders: Reminder[];
@@ -96,6 +101,8 @@ export interface AppData {
     moods: MoodEntry[];
     gallery: GalleryItem[];
     friends: string[]; // List of User IDs
+    friendRequests: FriendRequest[];
+    blockedUsers: string[];
 }
 
 export type AppView = 'onboarding' | 'dashboard' | 'session';

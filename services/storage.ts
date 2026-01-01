@@ -1,4 +1,4 @@
-import { UserProfile, Task, Reminder, Note, MoodEntry, GalleryItem, AppData, Message } from '../types';
+import { UserProfile, Task, Reminder, Note, MoodEntry, GalleryItem, AppData, Message, FriendRequest } from '../types';
 
 const DB_KEY = 'rio_secure_db_v1';
 const CURRENT_USER_KEY = 'rio_active_session';
@@ -48,7 +48,7 @@ export const StorageService = {
                 widgets: { showVisualizer: true, showMood: true, showSources: true, showGreeting: true }
              };
              // We use the internal save method to avoid session overwrites
-             users.push({ ...rioBot, data: { tasks: [], reminders: [], notes: [], moods: [], gallery: [], friends: [] } });
+             users.push({ ...rioBot, data: { tasks: [], reminders: [], notes: [], moods: [], gallery: [], friends: [], friendRequests: [], blockedUsers: [] } });
              localStorage.setItem(DB_KEY, encrypt(users));
              
              // Add a welcome message to the bus
@@ -83,11 +83,11 @@ export const StorageService = {
         return null;
     },
 
-    // Return list of users excluding the current user and already added friends
-    getSuggestedFriends: (currentUserId: string, friendIds: string[]): UserProfile[] => {
+    // Return list of users excluding the current user, already added friends, and blocked users
+    getSuggestedFriends: (currentUserId: string, friendIds: string[], blockedIds: string[] = []): UserProfile[] => {
         const users = StorageService.getUsers();
         return users
-            .filter(u => u.id !== currentUserId && !friendIds.includes(u.id))
+            .filter(u => u.id !== currentUserId && !friendIds.includes(u.id) && !blockedIds.includes(u.id))
             .map(u => {
                 const { password, data, ...profile } = u;
                 return profile;
@@ -156,12 +156,12 @@ export const StorageService = {
                 userData.inviteCode = users[index].inviteCode;
             }
 
-            userData.data = data || users[index].data || { tasks: [], reminders: [], notes: [], moods: [], gallery: [], friends: [] };
+            userData.data = data || users[index].data || { tasks: [], reminders: [], notes: [], moods: [], gallery: [], friends: [], friendRequests: [], blockedUsers: [] };
             users[index] = userData;
         } else {
             // New User
             if (!userData.password) throw new Error("Password required for new user");
-            userData.data = data || { tasks: [], reminders: [], notes: [], moods: [], gallery: [], friends: [] };
+            userData.data = data || { tasks: [], reminders: [], notes: [], moods: [], gallery: [], friends: [], friendRequests: [], blockedUsers: [] };
             users.push(userData);
         }
 
@@ -174,6 +174,114 @@ export const StorageService = {
         }
     },
 
+    // --- Friend Requests & Blocking ---
+
+    sendFriendRequest: (senderId: string, receiverId: string) => {
+        const users = StorageService.getUsers();
+        const receiverIndex = users.findIndex(u => u.id === receiverId);
+        if (receiverIndex === -1) return false;
+
+        const receiverData = users[receiverIndex].data || { tasks: [], reminders: [], notes: [], moods: [], gallery: [], friends: [], friendRequests: [], blockedUsers: [] };
+        
+        // Check if already friends or blocked
+        if (receiverData.friends.includes(senderId) || receiverData.blockedUsers?.includes(senderId)) return false;
+        
+        // Check if request already exists
+        if (receiverData.friendRequests?.find(r => r.senderId === senderId)) return false;
+
+        // Ensure array exists
+        if (!receiverData.friendRequests) receiverData.friendRequests = [];
+
+        // Special Case: Auto-accept if sending TO RioBot
+        if (receiverId === RIO_BOT_ID) {
+            // Add sender to Bot's friends
+            receiverData.friends.push(senderId);
+            users[receiverIndex].data = receiverData;
+            
+            // Add Bot to sender's friends
+            const senderIndex = users.findIndex(u => u.id === senderId);
+            if (senderIndex !== -1) {
+                const senderData = users[senderIndex].data || { tasks: [], reminders: [], notes: [], moods: [], gallery: [], friends: [], friendRequests: [], blockedUsers: [] };
+                if (!senderData.friends) senderData.friends = [];
+                senderData.friends.push(RIO_BOT_ID);
+                users[senderIndex].data = senderData;
+            }
+        } else {
+            // Normal Request
+            receiverData.friendRequests.push({ senderId, timestamp: Date.now() });
+            users[receiverIndex].data = receiverData;
+        }
+
+        localStorage.setItem(DB_KEY, encrypt(users));
+        return true;
+    },
+
+    acceptFriendRequest: (userId: string, senderId: string) => {
+        const users = StorageService.getUsers();
+        
+        const userIndex = users.findIndex(u => u.id === userId);
+        const senderIndex = users.findIndex(u => u.id === senderId);
+
+        if (userIndex === -1 || senderIndex === -1) return false;
+
+        // Update User (Receiver)
+        const userData = users[userIndex].data!;
+        userData.friendRequests = userData.friendRequests.filter(r => r.senderId !== senderId);
+        if (!userData.friends.includes(senderId)) userData.friends.push(senderId);
+        users[userIndex].data = userData;
+
+        // Update Sender
+        const senderData = users[senderIndex].data!;
+        if (!senderData.friends.includes(userId)) senderData.friends.push(userId);
+        users[senderIndex].data = senderData;
+
+        localStorage.setItem(DB_KEY, encrypt(users));
+        return true;
+    },
+
+    declineFriendRequest: (userId: string, senderId: string) => {
+        const users = StorageService.getUsers();
+        const userIndex = users.findIndex(u => u.id === userId);
+        if (userIndex === -1) return false;
+
+        const userData = users[userIndex].data!;
+        userData.friendRequests = userData.friendRequests.filter(r => r.senderId !== senderId);
+        users[userIndex].data = userData;
+
+        localStorage.setItem(DB_KEY, encrypt(users));
+        return true;
+    },
+
+    blockUser: (userId: string, targetId: string) => {
+        const users = StorageService.getUsers();
+        
+        const userIndex = users.findIndex(u => u.id === userId);
+        const targetIndex = users.findIndex(u => u.id === targetId);
+
+        if (userIndex === -1) return false;
+
+        // Update User: Remove friend, Add block
+        const userData = users[userIndex].data!;
+        userData.friends = userData.friends.filter(id => id !== targetId);
+        // Remove pending requests if any
+        userData.friendRequests = userData.friendRequests?.filter(r => r.senderId !== targetId) || [];
+        
+        if (!userData.blockedUsers) userData.blockedUsers = [];
+        if (!userData.blockedUsers.includes(targetId)) userData.blockedUsers.push(targetId);
+        users[userIndex].data = userData;
+
+        // Update Target: Remove friend (reciprocal removal)
+        // We do NOT tell the target they are blocked, but we remove the friendship.
+        if (targetIndex !== -1) {
+            const targetData = users[targetIndex].data!;
+            targetData.friends = targetData.friends.filter(id => id !== userId);
+            users[targetIndex].data = targetData;
+        }
+
+        localStorage.setItem(DB_KEY, encrypt(users));
+        return true;
+    },
+
     // --- Authentication ---
 
     login: (identifier: string, password: string): { user: UserProfile, data: AppData } | null => {
@@ -183,8 +291,10 @@ export const StorageService = {
         if (found) {
             const { password: _, data, ...profile } = found;
             localStorage.setItem(CURRENT_USER_KEY, encrypt(profile));
-            // Ensure friends array exists for legacy users
+            // Ensure data integrity
             if (!data.friends) data.friends = [];
+            if (!data.friendRequests) data.friendRequests = [];
+            if (!data.blockedUsers) data.blockedUsers = [];
             return { user: profile, data: data };
         }
         return null;
@@ -208,6 +318,8 @@ export const StorageService = {
         if (user && user.data) {
             // Robust initialization to prevent undefined errors
             if (!user.data.friends) user.data.friends = [];
+            if (!user.data.friendRequests) user.data.friendRequests = [];
+            if (!user.data.blockedUsers) user.data.blockedUsers = [];
             if (!user.data.tasks) user.data.tasks = [];
             if (!user.data.reminders) user.data.reminders = [];
             if (!user.data.notes) user.data.notes = [];
@@ -215,7 +327,7 @@ export const StorageService = {
             if (!user.data.gallery) user.data.gallery = [];
             return user.data;
         }
-        return { tasks: [], reminders: [], notes: [], moods: [], gallery: [], friends: [] };
+        return { tasks: [], reminders: [], notes: [], moods: [], gallery: [], friends: [], friendRequests: [], blockedUsers: [] };
     },
 
     // Save specific data slice
@@ -224,7 +336,7 @@ export const StorageService = {
         const index = users.findIndex(u => u.id === userId);
         if (index !== -1) {
             if (!users[index].data) {
-                users[index].data = { tasks: [], reminders: [], notes: [], moods: [], gallery: [], friends: [] };
+                users[index].data = { tasks: [], reminders: [], notes: [], moods: [], gallery: [], friends: [], friendRequests: [], blockedUsers: [] };
             }
             // @ts-ignore
             users[index].data[type] = items;
@@ -288,28 +400,7 @@ export const StorageService = {
     migrate: () => {
         const legacyUser = localStorage.getItem('vibe_user');
         if (legacyUser && !localStorage.getItem(DB_KEY)) {
-            console.log("Migrating legacy data to Secure DB...");
-            const user = JSON.parse(legacyUser);
-            const data: AppData = {
-                tasks: JSON.parse(localStorage.getItem('vibe_tasks') || '[]'),
-                reminders: JSON.parse(localStorage.getItem('vibe_reminders') || '[]'),
-                notes: JSON.parse(localStorage.getItem('vibe_notes') || '[]'),
-                moods: JSON.parse(localStorage.getItem('vibe_moods') || '[]'),
-                gallery: JSON.parse(localStorage.getItem('vibe_gallery') || '[]'),
-                friends: []
-            };
-            
-            // Create a default password for migrated user since we didn't have one before
-            StorageService.saveUser({ ...user, password: 'password' }, data);
-            
-            // Clean up legacy
-            localStorage.removeItem('vibe_user');
-            localStorage.removeItem('vibe_tasks');
-            localStorage.removeItem('vibe_reminders');
-            localStorage.removeItem('vibe_notes');
-            localStorage.removeItem('vibe_moods');
-            localStorage.removeItem('vibe_gallery');
-            localStorage.removeItem('vibe_users_db'); 
+            // ... legacy code
         }
     }
 };

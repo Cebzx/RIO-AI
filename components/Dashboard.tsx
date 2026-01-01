@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Task, Reminder, Note, MoodEntry, UserProfile, LiveStatus, ThemeColor, ThemePreferences, GalleryItem, MediaContent, Message } from '../types';
+import { Task, Reminder, Note, MoodEntry, UserProfile, LiveStatus, ThemeColor, ThemePreferences, GalleryItem, MediaContent, Message, FriendRequest } from '../types';
 import Visualizer from './Visualizer';
 import { useGeminiLive } from '../hooks/useGeminiLive';
 import { BarChart, Bar, XAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
@@ -118,7 +118,7 @@ const Dashboard: React.FC<DashboardProps> = ({
 
     // --- Social State ---
     const [friends, setFriends] = useState<UserProfile[]>([]);
-    const [friendIds, setFriendIds] = useState<string[]>([]);
+    const [friendRequests, setFriendRequests] = useState<{ profile: UserProfile, timestamp: number }[]>([]);
     const [suggestedFriends, setSuggestedFriends] = useState<UserProfile[]>([]);
     const [activeChatId, setActiveChatId] = useState<string | null>(null);
     const [messages, setMessages] = useState<Message[]>([]);
@@ -136,22 +136,39 @@ const Dashboard: React.FC<DashboardProps> = ({
         }
     }, [user.inviteCode, onUpdateUser]);
 
-    // Initial Load of Friends and Suggestions
-    useEffect(() => {
+    // Initial Load of Friends, Requests and Suggestions
+    const loadSocialData = () => {
         const storedData = StorageService.loadUserData(user.id);
         const storedFriendIds = storedData.friends || [];
-        setFriendIds(storedFriendIds);
-
-        // Hydrate friend profiles
+        const storedBlockedIds = storedData.blockedUsers || [];
+        
+        // Load Friends
         const profiles = storedFriendIds
             .map(id => StorageService.getUserPublicProfile(id))
             .filter(p => p !== null) as UserProfile[];
         setFriends(profiles);
         
+        // Load Requests
+        const rawRequests = storedData.friendRequests || [];
+        const hydratedRequests = rawRequests.map(r => {
+            const profile = StorageService.getUserPublicProfile(r.senderId);
+            return profile ? { profile, timestamp: r.timestamp } : null;
+        }).filter(r => r !== null) as { profile: UserProfile, timestamp: number }[];
+        setFriendRequests(hydratedRequests);
+        
         // Load Suggestions
-        setSuggestedFriends(StorageService.getSuggestedFriends(user.id, storedFriendIds));
+        setSuggestedFriends(StorageService.getSuggestedFriends(user.id, storedFriendIds, storedBlockedIds));
+    };
 
-    }, [user.id, activeTab]); // Reload suggestions when tab changes
+    useEffect(() => {
+        loadSocialData();
+        // If tab is social, poll for updates slightly to simulate realtime requests coming in
+        let poller: any;
+        if (activeTab === 'social') {
+            poller = setInterval(loadSocialData, 5000);
+        }
+        return () => { if (poller) clearInterval(poller); }
+    }, [user.id, activeTab]);
 
     // Poll for messages (simulation of realtime)
     useEffect(() => {
@@ -170,27 +187,39 @@ const Dashboard: React.FC<DashboardProps> = ({
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [messages]);
 
-    const executeAddFriend = (targetUser: UserProfile) => {
-        if (friendIds.includes(targetUser.id)) {
-            setAddFriendError("Already friends!");
-            return;
+    const handleSendRequest = (targetUser: UserProfile) => {
+        const success = StorageService.sendFriendRequest(user.id, targetUser.id);
+        if (success) {
+            alert(`Friend request sent to ${targetUser.username}!`);
+            setSuggestedFriends(prev => prev.filter(u => u.id !== targetUser.id));
+            setAddFriendInput('');
+            setAddFriendError('');
+            
+            // If it was auto-accepted (Bot), reload immediately
+            if (targetUser.id === 'rio-official-bot') loadSocialData();
+        } else {
+            setAddFriendError("Could not send request. Check if blocked or already requested.");
         }
-        const newIds = [...friendIds, targetUser.id];
-        setFriendIds(newIds);
-        setFriends(prev => [...prev, targetUser]);
-        
-        // Update DB
-        StorageService.saveData(user.id, 'friends', newIds);
-        
-        // Update suggestions
-        setSuggestedFriends(prev => prev.filter(u => u.id !== targetUser.id));
-
-        setAddFriendInput('');
-        setAddFriendError('');
-        alert(`Added ${targetUser.username} to your friends!`);
     };
 
-    const handleAddFriend = () => {
+    const handleAcceptRequest = (senderId: string) => {
+        StorageService.acceptFriendRequest(user.id, senderId);
+        loadSocialData();
+    };
+
+    const handleDeclineRequest = (senderId: string) => {
+        StorageService.declineFriendRequest(user.id, senderId);
+        loadSocialData();
+    };
+
+    const handleBlockUser = (targetId: string) => {
+        if (!confirm("Are you sure you want to block this user? You will no longer see their messages.")) return;
+        StorageService.blockUser(user.id, targetId);
+        setActiveChatId(null);
+        loadSocialData();
+    };
+
+    const handleSearchAndAdd = () => {
         const input = addFriendInput.trim();
         if (!input) return;
         
@@ -212,7 +241,12 @@ const Dashboard: React.FC<DashboardProps> = ({
         }
 
         if (foundUser) {
-            executeAddFriend(foundUser);
+            // Check if already friends
+            if (friends.find(f => f.id === foundUser!.id)) {
+                setAddFriendError("Already friends!");
+                return;
+            }
+             handleSendRequest(foundUser);
         } else {
             setAddFriendError("User not found (Check Username, Code, or Email)");
         }
@@ -667,7 +701,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                                 <div className="h-[600px] flex flex-col md:flex-row gap-4">
                                     {/* Friends List & Add */}
                                     <div className={`${themeStyles.card} rounded-2xl p-4 md:w-1/3 flex flex-col`}>
-                                        <h3 className="font-semibold text-white mb-4">Friends</h3>
+                                        <h3 className="font-semibold text-white mb-4">Social</h3>
                                         
                                         {/* Add Friend Input */}
                                         <div className="mb-4">
@@ -676,11 +710,11 @@ const Dashboard: React.FC<DashboardProps> = ({
                                                     type="text"
                                                     value={addFriendInput}
                                                     onChange={(e) => setAddFriendInput(e.target.value)}
-                                                    placeholder="Username, Email or Code"
+                                                    placeholder="Find by Username, Email or Code"
                                                     className="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-white/30 focus:outline-none focus:border-blue-500"
                                                 />
                                                 <button 
-                                                    onClick={handleAddFriend}
+                                                    onClick={handleSearchAndAdd}
                                                     className="bg-blue-600 hover:bg-blue-500 text-white p-2 rounded-lg transition-colors"
                                                 >
                                                     <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
@@ -689,42 +723,72 @@ const Dashboard: React.FC<DashboardProps> = ({
                                             {addFriendError && <p className="text-red-400 text-xs mt-1">{addFriendError}</p>}
                                         </div>
 
-                                        {/* Suggested Friends */}
-                                        {suggestedFriends.length > 0 && (
-                                            <div className="mb-4 bg-white/5 rounded-xl p-3 border border-white/5">
-                                                <h4 className="text-xs text-white/50 uppercase font-semibold mb-2">People You May Know</h4>
-                                                <div className="space-y-2">
-                                                    {suggestedFriends.map(s => (
-                                                        <div key={s.id} className="flex items-center justify-between">
-                                                            <div className="flex items-center gap-2">
-                                                                <div className="w-6 h-6 rounded-full bg-zinc-700 flex items-center justify-center text-[10px]">{s.username.slice(0,2).toUpperCase()}</div>
-                                                                <span className="text-xs text-white/80">{s.username}</span>
+                                        <div className="flex-1 overflow-y-auto space-y-4">
+                                            
+                                            {/* Friend Requests */}
+                                            {friendRequests.length > 0 && (
+                                                <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl p-3">
+                                                    <h4 className="text-xs text-blue-300 uppercase font-semibold mb-3">Requests ({friendRequests.length})</h4>
+                                                    <div className="space-y-3">
+                                                        {friendRequests.map(req => (
+                                                            <div key={req.profile.id} className="flex flex-col gap-2">
+                                                                <div className="flex items-center gap-2">
+                                                                    <div className="w-6 h-6 rounded-full bg-indigo-500 flex items-center justify-center text-[10px]">{req.profile.username.slice(0,2).toUpperCase()}</div>
+                                                                    <span className="text-sm text-white">{req.profile.username}</span>
+                                                                </div>
+                                                                <div className="flex gap-2">
+                                                                    <button onClick={() => handleAcceptRequest(req.profile.id)} className="flex-1 bg-blue-600 text-white text-xs py-1.5 rounded-lg hover:bg-blue-500">Accept</button>
+                                                                    <button onClick={() => handleDeclineRequest(req.profile.id)} className="flex-1 bg-white/10 text-white text-xs py-1.5 rounded-lg hover:bg-white/20">Decline</button>
+                                                                </div>
                                                             </div>
-                                                            <button onClick={() => executeAddFriend(s)} className="text-xs text-blue-400 hover:text-white px-2 py-1 bg-blue-500/10 rounded">Add</button>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {/* Suggested Friends */}
+                                            {suggestedFriends.length > 0 && (
+                                                <div className="bg-white/5 rounded-xl p-3 border border-white/5">
+                                                    <h4 className="text-xs text-white/50 uppercase font-semibold mb-2">People You May Know</h4>
+                                                    <div className="space-y-2">
+                                                        {suggestedFriends.map(s => (
+                                                            <div key={s.id} className="flex items-center justify-between">
+                                                                <div className="flex items-center gap-2">
+                                                                    <div className="w-6 h-6 rounded-full bg-zinc-700 flex items-center justify-center text-[10px]">{s.username.slice(0,2).toUpperCase()}</div>
+                                                                    <span className="text-xs text-white/80">{s.username}</span>
+                                                                </div>
+                                                                <button onClick={() => handleSendRequest(s)} className="text-xs text-blue-400 hover:text-white px-2 py-1 bg-blue-500/10 rounded border border-blue-500/20 hover:bg-blue-500/20">
+                                                                    Request
+                                                                </button>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {/* Friends List */}
+                                            <div>
+                                                <h4 className="text-xs text-white/50 uppercase font-semibold mb-2">My Friends</h4>
+                                                <div className="space-y-2">
+                                                    {friends.map(friend => (
+                                                        <div 
+                                                            key={friend.id} 
+                                                            onClick={() => { setActiveChatId(friend.id); setMessages(StorageService.getConversation(user.id, friend.id)); }}
+                                                            className={`p-3 rounded-xl flex items-center gap-3 cursor-pointer transition-colors ${activeChatId === friend.id ? 'bg-white/10 border border-white/10' : 'hover:bg-white/5 border border-transparent'}`}
+                                                        >
+                                                            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center text-xs font-bold">
+                                                                {friend.username.slice(0,2).toUpperCase()}
+                                                            </div>
+                                                            <div className="overflow-hidden">
+                                                                <p className="text-sm font-medium text-white truncate">{friend.name}</p>
+                                                                <p className="text-xs text-white/50 truncate">@{friend.username}</p>
+                                                            </div>
                                                         </div>
                                                     ))}
+                                                    {friends.length === 0 && <p className="text-center text-white/30 text-sm py-4">No friends added yet.</p>}
                                                 </div>
                                             </div>
-                                        )}
 
-                                        {/* List */}
-                                        <div className="flex-1 overflow-y-auto space-y-2">
-                                            {friends.map(friend => (
-                                                <div 
-                                                    key={friend.id} 
-                                                    onClick={() => { setActiveChatId(friend.id); setMessages(StorageService.getConversation(user.id, friend.id)); }}
-                                                    className={`p-3 rounded-xl flex items-center gap-3 cursor-pointer transition-colors ${activeChatId === friend.id ? 'bg-white/10 border border-white/10' : 'hover:bg-white/5 border border-transparent'}`}
-                                                >
-                                                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center text-xs font-bold">
-                                                        {friend.username.slice(0,2).toUpperCase()}
-                                                    </div>
-                                                    <div className="overflow-hidden">
-                                                        <p className="text-sm font-medium text-white truncate">{friend.name}</p>
-                                                        <p className="text-xs text-white/50 truncate">@{friend.username}</p>
-                                                    </div>
-                                                </div>
-                                            ))}
-                                            {friends.length === 0 && <p className="text-center text-white/30 text-sm py-4">No friends yet.</p>}
                                         </div>
                                     </div>
 
@@ -733,13 +797,24 @@ const Dashboard: React.FC<DashboardProps> = ({
                                         {activeChatId ? (
                                             <>
                                                 {/* Chat Header */}
-                                                <div className="p-4 border-b border-white/10 flex items-center gap-3 bg-black/20">
-                                                    <div className="w-8 h-8 rounded-full bg-zinc-700 flex items-center justify-center text-xs">
-                                                        {friends.find(f => f.id === activeChatId)?.username.slice(0,2).toUpperCase()}
+                                                <div className="p-4 border-b border-white/10 flex items-center justify-between bg-black/20">
+                                                    <div className="flex items-center gap-3">
+                                                        <div className="w-8 h-8 rounded-full bg-zinc-700 flex items-center justify-center text-xs">
+                                                            {friends.find(f => f.id === activeChatId)?.username.slice(0,2).toUpperCase()}
+                                                        </div>
+                                                        <span className="font-medium text-white">
+                                                            {friends.find(f => f.id === activeChatId)?.username}
+                                                        </span>
                                                     </div>
-                                                    <span className="font-medium text-white">
-                                                        {friends.find(f => f.id === activeChatId)?.username}
-                                                    </span>
+                                                    
+                                                    {/* Block Button */}
+                                                    <button 
+                                                        onClick={() => handleBlockUser(activeChatId)}
+                                                        className="text-red-400/50 hover:text-red-400 p-2 rounded-lg hover:bg-red-500/10 transition-colors"
+                                                        title="Block User"
+                                                    >
+                                                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" /></svg>
+                                                    </button>
                                                 </div>
 
                                                 {/* Messages */}
