@@ -1,0 +1,7 @@
+{
+  "name": "RIO AI ",
+  "description": "A voice-first daily assistant for habit tracking, reflection, and daily briefings. Powered by Gemini Live.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
