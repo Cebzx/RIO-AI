@@ -33,7 +33,8 @@ const getThemeStyles = (theme: ThemePreferences) => {
             border: 'border-blue-500/50',
             glow: 'shadow-blue-500/20',
             gradient: 'from-cyan-500 via-blue-500 to-purple-600',
-            ring: 'ring-blue-500'
+            ring: 'ring-blue-500',
+            hoverBg: 'hover:bg-blue-500/20'
         },
         purple: {
             bg: 'bg-purple-600',
@@ -43,7 +44,8 @@ const getThemeStyles = (theme: ThemePreferences) => {
             border: 'border-purple-500/50',
             glow: 'shadow-purple-500/20',
             gradient: 'from-purple-500 via-fuchsia-500 to-pink-600',
-            ring: 'ring-purple-500'
+            ring: 'ring-purple-500',
+            hoverBg: 'hover:bg-purple-500/20'
         },
         green: {
             bg: 'bg-emerald-500',
@@ -53,7 +55,8 @@ const getThemeStyles = (theme: ThemePreferences) => {
             border: 'border-emerald-500/50',
             glow: 'shadow-emerald-500/20',
             gradient: 'from-emerald-400 via-green-500 to-teal-600',
-            ring: 'ring-emerald-500'
+            ring: 'ring-emerald-500',
+            hoverBg: 'hover:bg-emerald-500/20'
         },
         orange: {
             bg: 'bg-orange-500',
@@ -63,7 +66,8 @@ const getThemeStyles = (theme: ThemePreferences) => {
             border: 'border-orange-500/50',
             glow: 'shadow-orange-500/20',
             gradient: 'from-yellow-500 via-orange-500 to-red-600',
-            ring: 'ring-orange-500'
+            ring: 'ring-orange-500',
+            hoverBg: 'hover:bg-orange-500/20'
         },
         rose: {
             bg: 'bg-rose-500',
@@ -73,7 +77,8 @@ const getThemeStyles = (theme: ThemePreferences) => {
             border: 'border-rose-500/50',
             glow: 'shadow-rose-500/20',
             gradient: 'from-rose-400 via-pink-500 to-purple-600',
-            ring: 'ring-rose-500'
+            ring: 'ring-rose-500',
+            hoverBg: 'hover:bg-rose-500/20'
         }
     };
 
@@ -114,7 +119,7 @@ const Dashboard: React.FC<DashboardProps> = ({
   // Audio Recording State
   const [isRecording, setIsRecording] = useState(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const audioChunksRef = useRef<any[]>([]);
+  const audioChunksRef = useRef<Blob[]>([]);
 
   // Local state for profile editing
   const [editBio, setEditBio] = useState(user.bio || '');
@@ -124,6 +129,16 @@ const Dashboard: React.FC<DashboardProps> = ({
   const isSpeechRecognitionSupported = !!((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition);
 
   const styles = getThemeStyles(user.theme);
+
+  // Nav Items Configuration
+  const navItems = [
+    { id: 'home', label: 'Home', icon: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /> },
+    { id: 'tasks', label: 'Tasks', icon: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" /> },
+    { id: 'reminders', label: 'Reminders', icon: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /> },
+    { id: 'mood', label: 'Mood', icon: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /> },
+    { id: 'notes', label: 'Notes', icon: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /> },
+    { id: 'gallery', label: 'Gallery', icon: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /> }
+  ];
 
   // Clear input when tab changes
   useEffect(() => {
@@ -522,14 +537,14 @@ const Dashboard: React.FC<DashboardProps> = ({
                   </label>
               </div>
 
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
                   {gallery.length === 0 && (
                       <div className="col-span-full py-12 text-center text-zinc-500 border-2 border-dashed border-zinc-800 rounded-xl">
                           <p>No photos yet. Add some to get started!</p>
                       </div>
                   )}
                   {gallery.map((item) => (
-                      <div key={item.id} className="relative group aspect-square rounded-xl overflow-hidden bg-zinc-900">
+                      <div key={item.id} className="relative group aspect-square rounded-xl overflow-hidden bg-zinc-900 shadow-lg">
                           <img src={item.data} alt="Gallery" className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" />
                           <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                               <button 
@@ -589,10 +604,10 @@ const Dashboard: React.FC<DashboardProps> = ({
   );
 
   const renderHome = () => (
-    <div className="space-y-6 animate-fade-in relative z-10 pb-6">
+    <div className="space-y-6 animate-fade-in relative z-10 pb-6 w-full">
        {/* Hero Panel */}
        {user.widgets.showGreeting && (
-        <div className={`${styles.card} rounded-3xl p-8 text-center relative overflow-hidden transition-all duration-500`}>
+        <div className={`${styles.card} rounded-3xl p-8 text-center md:text-left relative overflow-hidden transition-all duration-500 flex flex-col md:flex-row md:items-center md:gap-8`}>
           {/* Status Indicator */}
           <div className="absolute top-6 right-6 flex items-center gap-2">
               {user.isHandsFree && status === LiveStatus.DISCONNECTED && (
@@ -601,17 +616,21 @@ const Dashboard: React.FC<DashboardProps> = ({
               <div className={`w-2.5 h-2.5 rounded-full ${status === LiveStatus.CONNECTED ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.5)]' : user.isHandsFree ? 'bg-amber-500/50' : 'bg-zinc-700'}`}></div>
           </div>
 
-          <div className="mb-6 flex flex-col items-center">
+          <div className="mb-6 md:mb-0 flex flex-col items-center md:items-start md:min-w-[200px]">
              {user.avatar && <img src={user.avatar} alt="Profile" className={`w-16 h-16 rounded-full object-cover mb-4 ring-2 ${styles.colors.ring} ring-offset-2 ring-offset-zinc-900`} />}
              <h2 className="text-2xl font-semibold text-white mb-1">Good {new Date().getHours() < 12 ? 'Morning' : new Date().getHours() < 18 ? 'Afternoon' : 'Evening'}, {user.name.split(' ')[0]}</h2>
              <p className={`${styles.colors.text} text-sm opacity-80`}>{status === LiveStatus.CONNECTED ? 'Listening...' : user.isHandsFree ? 'Say "Hey Rio" to start.' : 'Ready to help.'}</p>
           </div>
 
-          {user.widgets.showVisualizer && (
-             <Visualizer volume={volume} isActive={status === LiveStatus.CONNECTED} isSpeaking={isSpeaking} />
-          )}
+          <div className="flex-1 w-full flex justify-center">
+            {user.widgets.showVisualizer && (
+                <div className="w-full max-w-xs">
+                    <Visualizer volume={volume} isActive={status === LiveStatus.CONNECTED} isSpeaking={isSpeaking} />
+                </div>
+            )}
+          </div>
           
-          <div className="mt-8 flex flex-col items-center gap-6">
+          <div className="mt-8 md:mt-0 flex flex-col items-center gap-6 md:min-w-[120px]">
              <button 
                onClick={toggleSession} 
                className={`w-16 h-16 rounded-full flex items-center justify-center transition-all duration-300 shadow-xl
@@ -627,7 +646,7 @@ const Dashboard: React.FC<DashboardProps> = ({
              </button>
              
              {/* Simple Volume Slider */}
-             <div className="w-48 group">
+             <div className="w-32 md:w-24 group">
                 <input 
                     type="range" min="0" max="1" step="0.1" 
                     value={outputVolume} 
@@ -641,7 +660,7 @@ const Dashboard: React.FC<DashboardProps> = ({
 
        {/* Holographic Display Box - Now using displayMedia state for transitions */}
        {displayMedia && (
-         <div className={`relative group my-2 transition-all duration-300 ease-in-out ${isTransitioning ? 'opacity-0 scale-95 blur-sm' : 'opacity-100 scale-100 blur-0'}`}>
+         <div className={`relative group my-4 transition-all duration-300 ease-in-out ${isTransitioning ? 'opacity-0 scale-95 blur-sm' : 'opacity-100 scale-100 blur-0'}`}>
             <div className={`absolute -inset-0.5 bg-gradient-to-r ${styles.colors.gradient} rounded-[2rem] opacity-30 group-hover:opacity-60 blur-lg transition duration-1000`}></div>
             <div className={`relative ${styles.card} rounded-[1.75rem] overflow-hidden shadow-2xl`}>
                 <div className="absolute inset-0 z-20 pointer-events-none mix-blend-overlay opacity-20" style={{ backgroundImage: 'linear-gradient(transparent 50%, rgba(0, 0, 0, 0.5) 50%)', backgroundSize: '100% 4px' }}></div>
@@ -747,12 +766,12 @@ const Dashboard: React.FC<DashboardProps> = ({
          </div>
       </form>
 
-      <div className="grid grid-cols-2 gap-3 overflow-y-auto pb-20">
-          {notes.length === 0 && <div className="col-span-2 text-center text-zinc-500/50 text-sm mt-12">Your notes will appear here.</div>}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 overflow-y-auto pb-20">
+          {notes.length === 0 && <div className="col-span-full text-center text-zinc-500/50 text-sm mt-12">Your notes will appear here.</div>}
           {notes.map(note => (
-              <div key={note.id} className={`${styles.card} p-4 rounded-2xl relative group hover:bg-white/5 transition-all duration-300 flex flex-col justify-between min-h-[140px]`}>
+              <div key={note.id} className={`${styles.card} p-4 rounded-2xl relative group hover:bg-white/5 transition-all duration-300 flex flex-col justify-between min-h-[140px] shadow-sm hover:shadow-md`}>
                   <div>
-                      <p className="text-zinc-200 text-sm whitespace-pre-wrap leading-relaxed line-clamp-4">{note.content}</p>
+                      <p className="text-zinc-200 text-sm whitespace-pre-wrap leading-relaxed line-clamp-6">{note.content}</p>
                       {note.audioData && (
                           <div className="mt-3 bg-black/20 rounded-lg p-2">
                               <audio controls src={note.audioData} className="w-full h-8" />
@@ -772,8 +791,8 @@ const Dashboard: React.FC<DashboardProps> = ({
   // --- SETTINGS RENDERER ---
 
   const renderSettings = () => (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-md animate-fade-in">
-        <div className={`w-full max-w-sm ${styles.card} border-t sm:border border-white/10 rounded-t-3xl sm:rounded-3xl relative shadow-2xl h-[85vh] sm:h-[600px] flex flex-col`}>
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-md animate-fade-in p-4">
+        <div className={`w-full max-w-sm md:max-w-md ${styles.card} border-t sm:border border-white/10 rounded-t-3xl sm:rounded-3xl relative shadow-2xl h-[85vh] sm:h-[600px] flex flex-col`}>
              <div className="w-12 h-1.5 bg-zinc-700/50 rounded-full mx-auto mt-3 mb-2 sm:hidden flex-shrink-0"></div>
              
              <div className="flex justify-between items-center px-6 py-4 flex-shrink-0 border-b border-white/5">
@@ -924,10 +943,8 @@ const Dashboard: React.FC<DashboardProps> = ({
 
   // --- MAIN RENDER ---
   return (
-    <div 
-        className="flex flex-col h-screen max-w-md mx-auto relative overflow-hidden bg-zinc-950 sm:border-x sm:border-white/5 shadow-2xl"
-    >
-      {/* Background Image Layer */}
+    <div className="flex h-screen w-full bg-zinc-950 text-white overflow-hidden relative select-none">
+      {/* Background Image Layer - Global */}
       {user.theme.backgroundImage && (
           <>
              <div 
@@ -942,56 +959,97 @@ const Dashboard: React.FC<DashboardProps> = ({
       {/* Snow Effect Overlay */}
       <SnowEffect />
 
-      {/* Header */}
-      <header className="px-6 py-6 flex justify-between items-center relative z-20">
-        <div>
-           <h1 className="text-xl font-bold text-white tracking-tight drop-shadow-md">Rio</h1>
-        </div>
-        <button 
-          onClick={() => { setEditAvatar(user.avatar || ''); setEditBio(user.bio || ''); setShowSettings(true); }}
-          className="w-9 h-9 rounded-full bg-white/10 border border-white/10 flex items-center justify-center text-sm font-semibold text-white hover:bg-white/20 transition-colors overflow-hidden backdrop-blur-md shadow-lg"
-        >
-            {user.avatar ? <img src={user.avatar} alt="User" className="w-full h-full object-cover" /> : user.name[0]}
-        </button>
-      </header>
+      {/* DESKTOP SIDEBAR (Visible md+) */}
+      <aside className="hidden md:flex flex-col w-20 lg:w-64 glass-card border-r border-white/10 z-30 transition-all duration-300 backdrop-blur-2xl bg-black/40">
+            <div className="p-6 flex items-center justify-center lg:justify-start gap-4 mb-2">
+                <div className="w-10 h-10 bg-gradient-to-tr from-blue-500 to-purple-600 rounded-xl shadow-lg flex items-center justify-center flex-shrink-0">
+                    <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" /></svg>
+                </div>
+                <h1 className="text-xl font-bold hidden lg:block tracking-tight text-white">Rio</h1>
+            </div>
+            
+            <nav className="flex-1 px-3 space-y-2 py-4 overflow-y-auto scrollbar-hide">
+                {navItems.map(item => (
+                    <button
+                        key={item.id}
+                        onClick={() => setActiveTab(item.id as any)}
+                        className={`w-full flex items-center gap-4 p-3 rounded-xl transition-all duration-200 group ${activeTab === item.id ? `${styles.colors.bgSoft} ${styles.colors.text} ring-1 ${styles.colors.border}` : 'hover:bg-white/5 text-zinc-400 hover:text-white'}`}
+                    >
+                        <div className={`p-1 ${activeTab === item.id ? '' : 'group-hover:scale-110 transition-transform'}`}>
+                            <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                {item.icon}
+                            </svg>
+                        </div>
+                        <span className="hidden lg:block text-sm font-medium">{item.label}</span>
+                    </button>
+                ))}
+            </nav>
 
-      {/* Main Content Area */}
-      <main className="flex-1 px-6 pb-28 overflow-y-auto scrollbar-hide relative z-10">
-         {activeTab === 'home' && renderHome()}
-         {activeTab === 'tasks' && renderList('tasks')}
-         {activeTab === 'reminders' && renderList('reminders')}
-         {activeTab === 'notes' && renderNotes()}
-         {activeTab === 'gallery' && renderGallery()}
-         {activeTab === 'mood' && renderMood()}
-      </main>
+            {/* User Profile Small at Bottom of Sidebar */}
+            <div className="p-4 border-t border-white/10 mt-auto">
+                <button 
+                    onClick={() => { setEditAvatar(user.avatar || ''); setEditBio(user.bio || ''); setShowSettings(true); }}
+                    className="flex items-center gap-3 w-full hover:bg-white/5 p-2 rounded-xl transition-colors"
+                >
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white overflow-hidden ring-2 ${styles.colors.ring} ring-offset-2 ring-offset-black`}>
+                        {user.avatar ? <img src={user.avatar} alt="User" className="w-full h-full object-cover" /> : user.name[0]}
+                    </div>
+                    <div className="hidden lg:flex flex-col items-start min-w-0">
+                        <span className="text-sm font-medium truncate text-white">{user.name}</span>
+                        <span className="text-[10px] text-zinc-500 truncate">Settings</span>
+                    </div>
+                </button>
+            </div>
+      </aside>
+
+      {/* MAIN CONTENT AREA */}
+      <div className="flex-1 flex flex-col h-full relative z-20 w-full overflow-hidden">
+            {/* MOBILE HEADER (Visible < md) */}
+            <header className="px-6 py-6 flex justify-between items-center md:hidden relative z-20 shrink-0">
+                <div>
+                    <h1 className="text-xl font-bold text-white tracking-tight drop-shadow-md">Rio</h1>
+                </div>
+                <button 
+                    onClick={() => { setEditAvatar(user.avatar || ''); setEditBio(user.bio || ''); setShowSettings(true); }}
+                    className="w-9 h-9 rounded-full bg-white/10 border border-white/10 flex items-center justify-center text-sm font-semibold text-white hover:bg-white/20 transition-colors overflow-hidden backdrop-blur-md shadow-lg"
+                >
+                    {user.avatar ? <img src={user.avatar} alt="User" className="w-full h-full object-cover" /> : user.name[0]}
+                </button>
+            </header>
+
+            {/* SCROLLABLE CONTENT */}
+            <main className="flex-1 overflow-y-auto overflow-x-hidden p-6 md:p-10 scrollbar-hide pb-28 md:pb-8 w-full">
+                 <div className="max-w-4xl mx-auto w-full h-full">
+                    {activeTab === 'home' && renderHome()}
+                    {activeTab === 'tasks' && renderList('tasks')}
+                    {activeTab === 'reminders' && renderList('reminders')}
+                    {activeTab === 'notes' && renderNotes()}
+                    {activeTab === 'gallery' && renderGallery()}
+                    {activeTab === 'mood' && renderMood()}
+                 </div>
+            </main>
+
+            {/* MOBILE BOTTOM NAV (Visible < md) */}
+            <nav className="md:hidden absolute bottom-8 left-0 right-0 z-40 px-6 pointer-events-none">
+                <div className={`${styles.card} pointer-events-auto p-1.5 flex justify-between items-center rounded-2xl shadow-2xl backdrop-blur-xl`}>
+                    {navItems.map((tab) => (
+                        <button 
+                            key={tab.id}
+                            onClick={() => setActiveTab(tab.id as any)}
+                            className={`flex-1 flex flex-col items-center justify-center py-3 rounded-xl transition-all duration-300
+                                ${activeTab === tab.id ? `${styles.colors.bgSoft} ${styles.colors.text} shadow-inner` : 'text-zinc-500 hover:text-zinc-300 hover:bg-white/5'}`}
+                        >
+                            <svg className="w-6 h-6 mb-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                {tab.icon}
+                            </svg>
+                        </button>
+                    ))}
+                </div>
+            </nav>
+      </div>
 
       {/* Settings Modal (Overlay) */}
       {showSettings && renderSettings()}
-
-      {/* Bottom Navigation */}
-      <nav className="absolute bottom-8 left-0 right-0 z-40 px-6">
-          <div className={`${styles.card} p-1.5 flex justify-between items-center rounded-2xl shadow-2xl backdrop-blur-xl`}>
-          {[
-            { id: 'home', icon: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /> },
-            { id: 'tasks', icon: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" /> },
-            { id: 'reminders', icon: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /> },
-            { id: 'mood', icon: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /> },
-            { id: 'notes', icon: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /> },
-            { id: 'gallery', icon: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /> }
-          ].map((tab) => (
-             <button 
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id as any)}
-                className={`flex-1 flex flex-col items-center justify-center py-3 rounded-xl transition-all duration-300
-                    ${activeTab === tab.id ? `${styles.colors.bgSoft} ${styles.colors.text} shadow-inner` : 'text-zinc-500 hover:text-zinc-300 hover:bg-white/5'}`}
-             >
-                <svg className="w-6 h-6 mb-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                   {tab.icon}
-                </svg>
-             </button>
-          ))}
-          </div>
-      </nav>
     </div>
   );
 };
