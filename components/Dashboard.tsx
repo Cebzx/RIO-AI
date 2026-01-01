@@ -4,6 +4,7 @@ import Visualizer from './Visualizer';
 import { useGeminiLive } from '../hooks/useGeminiLive';
 import { BarChart, Bar, XAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { SpotifyService } from '../services/spotifyService';
+import SnowEffect from './SnowEffect';
 
 interface DashboardProps {
   user: UserProfile;
@@ -118,6 +119,9 @@ const Dashboard: React.FC<DashboardProps> = ({
   // Local state for profile editing
   const [editBio, setEditBio] = useState(user.bio || '');
   const [editAvatar, setEditAvatar] = useState(user.avatar || '');
+  
+  // Detect if Speech Recognition is supported (for Hands Free settings)
+  const isSpeechRecognitionSupported = !!((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition);
 
   const styles = getThemeStyles(user.theme);
 
@@ -218,18 +222,31 @@ const Dashboard: React.FC<DashboardProps> = ({
   const startRecording = async () => {
     try {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        const recorder = new MediaRecorder(stream);
+        
+        // Determine supported mime type (Crucial for iOS compatibility)
+        let options = {};
+        let mimeType = '';
+        if (MediaRecorder.isTypeSupported('audio/mp4')) {
+             mimeType = 'audio/mp4';
+             options = { mimeType };
+        } else if (MediaRecorder.isTypeSupported('audio/webm')) {
+             mimeType = 'audio/webm';
+             options = { mimeType };
+        }
+        
+        const recorder = new MediaRecorder(stream, options);
         mediaRecorderRef.current = recorder;
         audioChunksRef.current = [];
 
-        recorder.ondataavailable = (e) => {
+        recorder.ondataavailable = (e: BlobEvent) => {
             if (e.data.size > 0) {
                 audioChunksRef.current.push(e.data);
             }
         };
 
         recorder.onstop = () => {
-            const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+            const blobType = mimeType || 'audio/webm';
+            const audioBlob = new Blob(audioChunksRef.current, { type: blobType });
             const reader = new FileReader();
             reader.onloadend = () => {
                 const base64Audio = reader.result as string;
@@ -791,16 +808,26 @@ const Dashboard: React.FC<DashboardProps> = ({
                 {settingsTab === 'voice' && (
                     <div className="space-y-6">
                         <h3 className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-4">Voice Interaction</h3>
-                        {/* Hands Free Toggle */}
-                        <div className="flex items-center justify-between bg-white/5 p-4 rounded-2xl">
-                            <div>
-                                <span className="text-sm font-medium text-white block">Hands-Free Mode</span>
-                                <span className="text-xs text-zinc-500 mt-1 block">Wake Rio by saying "Hey Rio" or "Rio"</span>
+                        
+                        {/* Hands Free Toggle - Only if browser supports SpeechRecognition */}
+                        {isSpeechRecognitionSupported ? (
+                             <div className="flex items-center justify-between bg-white/5 p-4 rounded-2xl">
+                                <div>
+                                    <span className="text-sm font-medium text-white block">Hands-Free Mode</span>
+                                    <span className="text-xs text-zinc-500 mt-1 block">Wake Rio by saying "Hey Rio" or "Rio"</span>
+                                </div>
+                                <button onClick={() => onUpdateUser({ isHandsFree: !user.isHandsFree })} className={`w-12 h-7 rounded-full relative transition-colors duration-300 ${user.isHandsFree ? styles.colors.bg : 'bg-zinc-700'}`}>
+                                    <div className={`absolute top-1 w-5 h-5 bg-white rounded-full shadow-md transition-transform duration-300 ${user.isHandsFree ? 'translate-x-6' : 'translate-x-1'}`}></div>
+                                </button>
                             </div>
-                            <button onClick={() => onUpdateUser({ isHandsFree: !user.isHandsFree })} className={`w-12 h-7 rounded-full relative transition-colors duration-300 ${user.isHandsFree ? styles.colors.bg : 'bg-zinc-700'}`}>
-                                <div className={`absolute top-1 w-5 h-5 bg-white rounded-full shadow-md transition-transform duration-300 ${user.isHandsFree ? 'translate-x-6' : 'translate-x-1'}`}></div>
-                            </button>
-                        </div>
+                        ) : (
+                             <div className="flex items-center justify-between bg-white/5 p-4 rounded-2xl opacity-60">
+                                <div>
+                                    <span className="text-sm font-medium text-white block">Hands-Free Mode</span>
+                                    <span className="text-xs text-zinc-500 mt-1 block">Not supported on this browser</span>
+                                </div>
+                            </div>
+                        )}
                         
                          {/* Content Mode */}
                          <div className="flex items-center justify-between bg-white/5 p-4 rounded-2xl">
@@ -911,6 +938,9 @@ const Dashboard: React.FC<DashboardProps> = ({
              <div className="absolute inset-0 z-0 bg-gradient-to-b from-black/60 via-black/40 to-black/80 backdrop-blur-[2px]"></div>
           </>
       )}
+
+      {/* Snow Effect Overlay */}
+      <SnowEffect />
 
       {/* Header */}
       <header className="px-6 py-6 flex justify-between items-center relative z-20">
