@@ -169,16 +169,21 @@ const Dashboard: React.FC<DashboardProps> = ({
         const input = addFriendInput.trim();
         if (!input) return;
         
-        // Prevent adding self by username or own invite code
-        if (input.toLowerCase() === user.username.toLowerCase() || input.toUpperCase() === user.inviteCode?.toUpperCase()) {
+        // Prevent adding self by username or own invite code or email
+        if (input.toLowerCase() === user.username.toLowerCase() || 
+            input.toUpperCase() === user.inviteCode?.toUpperCase() ||
+            input.toLowerCase() === user.email.toLowerCase()) {
             setAddFriendError("You can't add yourself!");
             return;
         }
 
-        // Search by Username OR Invite Code
+        // Search by Username OR Invite Code OR Email
         let foundUser = StorageService.findUserByUsername(input);
         if (!foundUser) {
             foundUser = StorageService.findUserByInviteCode(input);
+        }
+        if (!foundUser) {
+            foundUser = StorageService.findUserByEmail(input);
         }
 
         if (foundUser) {
@@ -192,9 +197,9 @@ const Dashboard: React.FC<DashboardProps> = ({
             StorageService.saveData(user.id, 'friends', newIds);
             setAddFriendInput('');
             setAddFriendError('');
-            alert(`Added ${foundUser.username}!`);
+            alert(`Added ${foundUser.username} to your friends!`);
         } else {
-            setAddFriendError("User not found (Check Username or Code)");
+            setAddFriendError("User not found (Check Username, Code, or Email)");
         }
     };
 
@@ -656,7 +661,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                                                     type="text"
                                                     value={addFriendInput}
                                                     onChange={(e) => setAddFriendInput(e.target.value)}
-                                                    placeholder="Username or Invite Code"
+                                                    placeholder="Username, Email or Code"
                                                     className="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-white/30 focus:outline-none focus:border-blue-500"
                                                 />
                                                 <button 
@@ -686,7 +691,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                                                     </div>
                                                 </div>
                                             ))}
-                                            {friends.length === 0 && <p className="text-center text-white/30 text-sm py-4">No friends yet.</p>}
+                                            {friends.length === 0 && <p className="text-center text-white/30 text-sm py-4">No friends yet. Add RioBot to test!</p>}
                                         </div>
                                     </div>
 

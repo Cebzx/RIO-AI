@@ -16,6 +16,8 @@ const App: React.FC = () => {
   useEffect(() => {
     // Attempt migration first
     StorageService.migrate();
+    // Initialize Database with Bot if empty
+    StorageService.initializeDatabase();
 
     // Check for active session
     const session = StorageService.getSession();
